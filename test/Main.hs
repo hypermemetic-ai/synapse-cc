@@ -52,7 +52,7 @@ import SynapseCC.Detect
   , BackendInference(..)
   , inferBackendFromCrate, parseServiceCrateName
   )
-import SynapseCC.Discover (discoverTools)
+import SynapseCC.Discover (discoverTools, hubCodegenSendsInjectedParams)
 import qualified SynapseCC.Language as Language
 import SynapseCC.Merge (additiveMerge)
 import SynapseCC.Pipeline (runPipeline)
@@ -1114,6 +1114,16 @@ main = do
     -- ═══════════════════════════════════════════
     -- Section 12: Watch utilities (pure)
     -- ═══════════════════════════════════════════
+    describe "SYNAPSE-CC-2 hub-codegen version" $ do
+      it "every hub-codegen before 0.5.0 sends injected params" $ do
+        map hubCodegenSendsInjectedParams ["0.4.1", "0.4.0", "0.1.0", "0.4.9-rc1"]
+          `shouldBe` [True, True, True, True]
+      it "0.5.0 and later leave them out" $ do
+        map hubCodegenSendsInjectedParams ["0.5.0", "0.5.1", "0.10.0", "1.0.0"]
+          `shouldBe` [False, False, False, False]
+      it "an unparseable version is not warned about" $ do
+        map hubCodegenSendsInjectedParams ["unknown", "", "dev"] `shouldBe` [False, False, False]
+
     describe "Watch utilities" $ do
 
       describe "matchesAnyPrefix" $ do

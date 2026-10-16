@@ -4,6 +4,7 @@ module SynapseCC.Discover
   , findTool
   , toolPathToFilePath
   , findInDistNewstyle
+  , hubCodegenSendsInjectedParams
   ) where
 
 import Control.Exception (catch, SomeException, try)
@@ -14,6 +15,7 @@ import Data.Maybe (catMaybes)
 import Data.Ord (comparing, Down(..))
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Read as TR
 import System.Directory (doesFileExist, doesDirectoryExist, findExecutable, getHomeDirectory, listDirectory, getModificationTime)
 import System.FilePath ((</>))
 import System.Process (readProcessWithExitCode)
@@ -50,6 +52,10 @@ discoverTools opts = do
 
           logDebug debug $ "  synapse     " <> T.pack (toolPathToFilePath synapseToolPath) <> "  (" <> synapseVer <> ")"
           logDebug debug $ "  hub-codegen " <> T.pack (toolPathToFilePath hubCodegenToolPath) <> "  (" <> hubCodegenVer <> ")"
+          when (hubCodegenSendsInjectedParams hubCodegenVer) $
+            logInfo $ "hub-codegen " <> hubCodegenVer <> " predates 0.5.0: a parameter the server injects "
+              <> "(pdSource: auth, header, derived, …) comes out as an optional `unknown` argument "
+              <> "of the generated methods. Use hub-codegen 0.5.0 or later (SYNAPSE-CC-2)."
 
           pure $ Right $ ToolLocations
             { toolSynapse           = synapseToolPath
@@ -57,6 +63,20 @@ discoverTools opts = do
             , toolSynapseVersion    = synapseVer
             , toolHubCodegenVersion = hubCodegenVer
             }
+
+-- | SYNAPSE-CC-2: whether a hub-codegen of this version (as 'getToolVersion'
+-- reports it) still writes server-injected parameters into the generated
+-- methods — every release before 0.5.0. An unparseable version is given
+-- the benefit of the doubt.
+hubCodegenSendsInjectedParams :: Text -> Bool
+hubCodegenSendsInjectedParams ver =
+  case traverse readNat (T.splitOn "." (T.takeWhile (/= '-') ver)) of
+    Just (major : minor : _) -> (major, minor) < (0, 5)
+    _                        -> False
+  where
+    readNat t = case TR.decimal t of
+      Right (n, rest) | T.null rest -> Just (n :: Int)
+      _                             -> Nothing
 
 -- | Resolve an explicitly-provided path, failing clearly if it doesn't exist
 resolveExplicit :: String -> FilePath -> Bool -> IO (Maybe ToolPath)

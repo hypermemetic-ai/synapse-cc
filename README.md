@@ -27,7 +27,10 @@ cabal install
 
 `synapse-cc` requires these tools to be available:
 - **synapse** - Schema discovery and IR generation
-- **hub-codegen** - Code generation from IR
+- **hub-codegen** ≥ 0.5.0 - Code generation from IR. Earlier releases write a
+  parameter the server injects (`pdSource`: auth, header, derived, …) into the
+  generated methods as an optional `unknown` argument; synapse-cc says so when
+  it finds one (SYNAPSE-CC-2)
 
 The tool will automatically find them if they're:
 - In your `$PATH`
