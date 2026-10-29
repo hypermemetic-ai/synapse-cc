@@ -10,8 +10,12 @@ module SynapseCC.CLI
 
     -- * Version
   , versionInfo
+
+    -- * Deprecated spellings (NAMING-10)
+  , deprecatedFlagNotes
   ) where
 
+import Data.List (isPrefixOf)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Options.Applicative
@@ -154,7 +158,7 @@ initCommandParser = CmdInit
 -- | Options relevant to watch mode.
 -- host/port come from synapse.config.json (not CLI flags for watch).
 watchOptionsParser :: Parser Options
-watchOptionsParser = (\cacheDir debug synapse hub token tokenFile ->
+watchOptionsParser = (\cacheDir debug synapse service token tokenFile ->
   defaultOptions
     { optInstallDeps    = False
     , optBuild          = False
@@ -162,7 +166,7 @@ watchOptionsParser = (\cacheDir debug synapse hub token tokenFile ->
     , optCacheDir       = cacheDir
     , optDebug          = debug
     , optSynapsePath    = synapse
-    , optHubCodegenPath = hub
+    , optServiceCodegenPath = service
     , optToken          = token
     , optTokenFile      = tokenFile
     })
@@ -175,13 +179,32 @@ watchOptionsParser = (\cacheDir debug synapse hub token tokenFile ->
       )
   <*> switch (long "debug" <> help "Enable debug logging")
   <*> optional (option str (long "synapse"     <> metavar "PATH" <> help "synapse binary path"))
-  <*> optional (option str (long "hub-codegen" <> metavar "PATH" <> help "hub-codegen binary path"))
+  <*> serviceCodegenPathParser "service-codegen binary path"
   <*> optional (T.pack <$> option str (long "token" <> short 't' <> metavar "JWT" <> help "JWT auth token (overrides SYNAPSE_TOKEN, --token-file, and any access_token in ~/.plexus/<backend>/defaults.json)"))
   <*> optional (option str (long "token-file" <> metavar "PATH" <> help "Read JWT token from file"))
 
 -- ============================================================================
 -- Shared Parsers
 -- ============================================================================
+
+-- | @--service-codegen PATH@. NAMING-10: the flag's old spelling still works
+-- for one release, hidden from help; 'deprecatedFlagNotes' says so.
+serviceCodegenPathParser :: String -> Parser (Maybe FilePath)
+serviceCodegenPathParser helpText =
+  (<|>) <$> optional (option str (long "service-codegen" <> metavar "PATH" <> help helpText))
+        <*> optional (option str (long oldCodegenFlag <> metavar "PATH" <> hidden))
+
+-- | The generator flag's spelling before NAMING-10.
+oldCodegenFlag :: String
+oldCodegenFlag = "hub-codegen" -- naming-alias: a hidden spelling of --service-codegen; removed by NAMING-18
+
+-- | A note for each deprecated flag among the arguments, to print before
+-- running (NAMING-10).
+deprecatedFlagNotes :: [String] -> [Text]
+deprecatedFlagNotes args =
+  [ "--" <> T.pack oldCodegenFlag <> " is deprecated: use --service-codegen (NAMING-10)"
+  | any (\a -> a == "--" <> oldCodegenFlag || ("--" <> oldCodegenFlag <> "=") `isPrefixOf` a) args
+  ]
 
 -- | Parse target language
 targetParser :: Parser Target
@@ -282,11 +305,7 @@ optionsParser = Options
      <> metavar "PATH"
      <> help "Path to synapse binary (overrides discovery)"
       ))
-  <*> optional (option str
-      ( long "hub-codegen"
-     <> metavar "PATH"
-     <> help "Path to hub-codegen binary (overrides discovery)"
-      ))
+  <*> serviceCodegenPathParser "Path to service-codegen binary (overrides discovery)"
   <*> optional (T.pack <$> option str
       ( long "token"
      <> short 't'

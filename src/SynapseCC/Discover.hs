@@ -1,10 +1,13 @@
--- | Tool discovery - finding synapse and hub-codegen executables
+-- | Tool discovery - finding synapse and service-codegen executables
 module SynapseCC.Discover
   ( discoverTools
   , findTool
   , toolPathToFilePath
   , findInDistNewstyle
-  , hubCodegenSendsInjectedParams
+  , serviceCodegenSendsInjectedParams
+  , findServiceCodegen
+  , serviceCodegenName
+  , oldCodegenName
   ) where
 
 import Control.Exception (catch, SomeException, try)
@@ -39,37 +42,39 @@ discoverTools opts = do
   case synapsePath of
     Nothing -> pure $ Left $ ToolNotFound "synapse" synapseSuggestions
     Just synapseToolPath -> do
-      hubCodegenPath <- case optHubCodegenPath opts of
-        Just explicit -> resolveExplicit "hub-codegen" explicit debug
-        Nothing       -> findTool debug "hub-codegen" hubCodegenFallbackPaths
+      serviceCodegenPath <- case optServiceCodegenPath opts of
+        Just explicit -> resolveExplicit serviceCodegenName explicit debug
+        Nothing       -> findServiceCodegen debug >>= \case
+          Nothing             -> pure Nothing
+          Just (path, mNote)  -> mapM_ logInfo mNote >> pure (Just path)
 
-      case hubCodegenPath of
-        Nothing -> pure $ Left $ ToolNotFound "hub-codegen" hubCodegenSuggestions
-        Just hubCodegenToolPath -> do
+      case serviceCodegenPath of
+        Nothing -> pure $ Left $ ToolNotFound (T.pack serviceCodegenName) serviceCodegenSuggestions
+        Just serviceCodegenToolPath -> do
           -- Run --version for each discovered tool
           synapseVer    <- getToolVersion (toolPathToFilePath synapseToolPath)
-          hubCodegenVer <- getToolVersion (toolPathToFilePath hubCodegenToolPath)
+          serviceCodegenVer <- getToolVersion (toolPathToFilePath serviceCodegenToolPath)
 
           logDebug debug $ "  synapse     " <> T.pack (toolPathToFilePath synapseToolPath) <> "  (" <> synapseVer <> ")"
-          logDebug debug $ "  hub-codegen " <> T.pack (toolPathToFilePath hubCodegenToolPath) <> "  (" <> hubCodegenVer <> ")"
-          when (hubCodegenSendsInjectedParams hubCodegenVer) $
-            logInfo $ "hub-codegen " <> hubCodegenVer <> " predates 0.5.0: a parameter the server injects "
+          logDebug debug $ "  service-codegen " <> T.pack (toolPathToFilePath serviceCodegenToolPath) <> "  (" <> serviceCodegenVer <> ")"
+          when (serviceCodegenSendsInjectedParams serviceCodegenVer) $
+            logInfo $ "the code generator " <> serviceCodegenVer <> " predates 0.5.0: a parameter the server injects "
               <> "(pdSource: auth, header, derived, …) comes out as an optional `unknown` argument "
-              <> "of the generated methods. Use hub-codegen 0.5.0 or later (SYNAPSE-CC-2)."
+              <> "of the generated methods. Use service-codegen 0.5.0 or later (SYNAPSE-CC-2)."
 
           pure $ Right $ ToolLocations
             { toolSynapse           = synapseToolPath
-            , toolHubCodegen        = hubCodegenToolPath
+            , toolServiceCodegen        = serviceCodegenToolPath
             , toolSynapseVersion    = synapseVer
-            , toolHubCodegenVersion = hubCodegenVer
+            , toolServiceCodegenVersion = serviceCodegenVer
             }
 
--- | SYNAPSE-CC-2: whether a hub-codegen of this version (as 'getToolVersion'
+-- | SYNAPSE-CC-2: whether a service-codegen of this version (as 'getToolVersion'
 -- reports it) still writes server-injected parameters into the generated
 -- methods — every release before 0.5.0. An unparseable version is given
 -- the benefit of the doubt.
-hubCodegenSendsInjectedParams :: Text -> Bool
-hubCodegenSendsInjectedParams ver =
+serviceCodegenSendsInjectedParams :: Text -> Bool
+serviceCodegenSendsInjectedParams ver =
   case traverse readNat (T.splitOn "." (T.takeWhile (/= '-') ver)) of
     Just (major : minor : _) -> (major, minor) < (0, 5)
     _                        -> False
@@ -141,7 +146,7 @@ getToolVersion exe = do
     Left _             -> pure "unknown"
     Right (_, out, _) ->
       let firstLine = T.strip $ T.pack $ head (lines out ++ [""])
-          -- Take last word (handles "hub-codegen 0.1.0" and "3.5.0")
+          -- Take last word (handles "service-codegen 0.1.0" and "3.5.0")
           lastWord  = case reverse (T.words firstLine) of
                         (w:_) -> w
                         []    -> ""
@@ -228,19 +233,47 @@ synapseFallbackPaths = do
         ]
   pure $ devPaths ++ installPaths
 
--- | Fallback paths for hub-codegen (checked if not in PATH)
-hubCodegenFallbackPaths :: IO [FilePath]
-hubCodegenFallbackPaths = do
+-- | NAMING-10: the generator is service-codegen; before 0.5.1 it had another
+-- name. Discovery looks for the new name first — on PATH, then beside this
+-- checkout and in the install directories — and only then for the old one.
+serviceCodegenName :: String
+serviceCodegenName = "service-codegen"
+
+-- | The generator's name before NAMING-10, still found (second, with a note)
+-- for one release.
+oldCodegenName :: String
+oldCodegenName = "hub-codegen" -- naming-alias: found after service-codegen; removed by NAMING-18
+
+-- | Find the generator under its name, else under its old one. The second
+-- part is a note to log when only the old name was found.
+findServiceCodegen :: Bool -> IO (Maybe (ToolPath, Maybe Text))
+findServiceCodegen debug = do
+  new <- findTool debug serviceCodegenName (codegenFallbackPaths serviceCodegenName)
+  case new of
+    Just path -> pure (Just (path, Nothing))
+    Nothing -> do
+      old <- findTool debug oldCodegenName (codegenFallbackPaths oldCodegenName)
+      pure $ fmap (\path -> (path, Just (oldNameNote path))) old
+  where
+    oldNameNote path =
+      "found the code generator under its old name, " <> T.pack oldCodegenName <> " ("
+        <> T.pack (toolPathToFilePath path) <> "); the name is deprecated: install "
+        <> T.pack serviceCodegenName <> " (0.5.1 or later) — the old name goes in NAMING-18"
+
+-- | Fallback paths for the generator under a name (checked if not in PATH):
+-- the sibling checkout's build, then the install directories.
+codegenFallbackPaths :: String -> IO [FilePath]
+codegenFallbackPaths name = do
   home <- getHomeDirectory
   let devPaths =
-        [ "../hub-codegen/target/release/hub-codegen"
-        , "../hub-codegen/target/debug/hub-codegen"
-        , "../../hub-codegen/target/release/hub-codegen"
-        , "../../hub-codegen/target/debug/hub-codegen"
+        [ ".." </> name </> "target/release" </> name
+        , ".." </> name </> "target/debug" </> name
+        , "../.." </> name </> "target/release" </> name
+        , "../.." </> name </> "target/debug" </> name
         ]
       installPaths =
-        [ home </> ".plexus/bin/hub-codegen"
-        , home </> ".cargo/bin/hub-codegen"
+        [ home </> ".plexus/bin" </> name
+        , home </> ".cargo/bin" </> name
         ]
   pure $ devPaths ++ installPaths
 
@@ -255,9 +288,9 @@ synapseSuggestions =
   , "Add to PATH: export PATH=\"$HOME/.local/bin:$PATH\""
   ]
 
-hubCodegenSuggestions :: [Text]
-hubCodegenSuggestions =
-  [ "Install hub-codegen: cd ../hub-codegen && cargo install --path ."
-  , "Or specify path: --hub-codegen /path/to/hub-codegen"
+serviceCodegenSuggestions :: [Text]
+serviceCodegenSuggestions =
+  [ "Install service-codegen: cd ../service-codegen && cargo install --path ."
+  , "Or specify path: --service-codegen /path/to/service-codegen"
   , "Add to PATH: export PATH=\"$HOME/.cargo/bin:$PATH\""
   ]

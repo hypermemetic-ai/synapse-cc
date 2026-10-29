@@ -56,7 +56,8 @@ module SynapseCC.Types
   , summarizeStderr
   ) where
 
-import Data.Aeson (FromJSON, ToJSON, fieldLabelModifier)
+import Control.Applicative ((<|>))
+import Data.Aeson (FromJSON(..), ToJSON, fieldLabelModifier)
 import qualified Data.Aeson as Aeson
 import Data.Aeson.Types (Parser)
 import Data.Map.Strict (Map)
@@ -135,7 +136,7 @@ data Options = Options
   , optForce           :: !Bool
   , optDebug           :: !Bool
   , optSynapsePath     :: !(Maybe FilePath)  -- ^ Override synapse binary path
-  , optHubCodegenPath  :: !(Maybe FilePath)  -- ^ Override hub-codegen binary path
+  , optServiceCodegenPath  :: !(Maybe FilePath)  -- ^ Override service-codegen binary path
   , optToken           :: !(Maybe Text)      -- ^ JWT token (--token; SAFE-2)
   , optTokenFile       :: !(Maybe FilePath)  -- ^ Token file path (--token-file; SAFE-2)
   } deriving stock (Show, Eq, Generic)
@@ -152,7 +153,7 @@ defaultOptions = Options
   , optForce           = False
   , optDebug           = False
   , optSynapsePath     = Nothing
-  , optHubCodegenPath  = Nothing
+  , optServiceCodegenPath  = Nothing
   , optToken           = Nothing
   , optTokenFile       = Nothing
   }
@@ -340,9 +341,9 @@ data WaitArgs = WaitArgs
 -- | Discovered locations of required tools
 data ToolLocations = ToolLocations
   { toolSynapse            :: !ToolPath
-  , toolHubCodegen         :: !ToolPath
+  , toolServiceCodegen         :: !ToolPath
   , toolSynapseVersion     :: !Text   -- ^ Result of @synapse --version@
-  , toolHubCodegenVersion  :: !Text   -- ^ Result of @hub-codegen --version@
+  , toolServiceCodegenVersion  :: !Text   -- ^ Result of @service-codegen --version@
   } deriving stock (Show, Eq)
 
 -- | Path to a discovered tool
@@ -376,10 +377,22 @@ newtype CompiledPath = CompiledPath { unCompiledPath :: FilePath }
 data ToolchainVersions = ToolchainVersions
   { tvSynapseCC   :: !Text
   , tvSynapse     :: !Text
-  , tvHubCodegen  :: !(Maybe Text)  -- Only known after codegen
+  , tvServiceCodegen  :: !(Maybe Text)  -- Only known after codegen
   , tvPlexusCore  :: !(Maybe Text)  -- SAFE-4: backend-reported plexus-core version (Nothing until SAFE-S02)
   } deriving stock (Show, Eq, Generic)
-    deriving anyclass (FromJSON, ToJSON)
+    deriving anyclass (ToJSON)
+
+-- | NAMING-10: a cache manifest written before the generator's rename keeps
+-- its version under the field's old name; it is read, so the version still
+-- invalidates the cache when it moves.
+instance FromJSON ToolchainVersions where
+  parseJSON v = do
+    tv <- Aeson.genericParseJSON Aeson.defaultOptions v
+    case tvServiceCodegen tv of
+      Just _  -> pure tv
+      Nothing -> flip (Aeson.withObject "ToolchainVersions") v $ \o -> do
+        old <- o Aeson..:? "tvHubCodegen" -- naming-alias: removed by NAMING-18
+        pure tv { tvServiceCodegen = old }
 
 -- | Cache entry for a single plugin's IR
 data IRPluginCache = IRPluginCache
@@ -410,7 +423,7 @@ data IRCacheManifest = IRCacheManifest
   } deriving stock (Show, Eq, Generic)
     deriving anyclass (FromJSON, ToJSON)
 
--- | Cache manifest for generated code (hub-codegen/typescript/manifest.json)
+-- | Cache manifest for generated code (service-codegen/typescript/manifest.json)
 data CodeCacheManifest = CodeCacheManifest
   { ccmVersion    :: !Text
   , ccmTarget     :: !Text
@@ -441,30 +454,29 @@ data CacheResult
   deriving stock (Show, Eq)
 
 -- ============================================================================
--- Codegen Output Types (JSON response from hub-codegen --output-format json)
+-- Codegen Output Types (JSON response from service-codegen --output-format json)
 -- ============================================================================
 
--- | JSON output from hub-codegen when invoked with --output-format json
+-- | JSON output from service-codegen when invoked with --output-format json
 data CodegenOutput = CodegenOutput
   { coFiles             :: !(Map Text Text)   -- ^ Generated file contents (relPath -> content)
   , coFileHashes        :: !(Map Text Text)   -- ^ Per-file content hashes (relPath -> hash)
   , coWarnings          :: ![CodegenWarning]  -- ^ Warnings from generation
-  , coHubCodegenVersion :: !Text             -- ^ hub-codegen version string
+  , coServiceCodegenVersion :: !Text             -- ^ service-codegen version string
   , coDependencies      :: !(Map Text Text)   -- ^ Runtime dependencies (name -> version)
   , coDevDependencies   :: !(Map Text Text)   -- ^ Dev dependencies (name -> version)
   } deriving stock (Show, Eq, Generic)
 
+-- | NAMING-10: the version is @serviceCodegenVersion@; a generator before
+-- 0.5.1 wrote it under its old name, which still reads.
 instance FromJSON CodegenOutput where
-  parseJSON = Aeson.genericParseJSON Aeson.defaultOptions
-    { fieldLabelModifier = \case
-        "coFiles"             -> "files"
-        "coFileHashes"        -> "fileHashes"
-        "coWarnings"          -> "warnings"
-        "coHubCodegenVersion" -> "hubCodegenVersion"
-        "coDependencies"      -> "dependencies"
-        "coDevDependencies"   -> "devDependencies"
-        other -> other
-    }
+  parseJSON = Aeson.withObject "CodegenOutput" $ \o -> CodegenOutput
+    <$> o Aeson..: "files"
+    <*> o Aeson..: "fileHashes"
+    <*> o Aeson..: "warnings"
+    <*> (o Aeson..: "serviceCodegenVersion" <|> o Aeson..: "hubCodegenVersion") -- naming-alias: removed by NAMING-18
+    <*> o Aeson..: "dependencies"
+    <*> o Aeson..: "devDependencies"
 
 -- | A warning emitted during code generation
 data CodegenWarning = CodegenWarning
@@ -490,8 +502,8 @@ data SynapseCCError
     -- ^ Tool not found with suggestions
   | SynapseError !Text !Int
     -- ^ Synapse execution failed with stderr and exit code
-  | HubCodegenError !Text !Int
-    -- ^ hub-codegen execution failed with stderr and exit code
+  | ServiceCodegenError !Text !Int
+    -- ^ service-codegen execution failed with stderr and exit code
   | LanguageToolError !Text !Text !Int
     -- ^ Language tool (npm, tsc, etc.) failed
   | CacheError !Text
@@ -553,9 +565,9 @@ formatError = \case
   SynapseError msg _ ->
     "[!] Error: " <> msg <> "\n"
 
-  HubCodegenError stderr exitCode ->
+  ServiceCodegenError stderr exitCode ->
     T.unlines
-      [ "[!] Error: hub-codegen failed (exit code " <> T.pack (show exitCode) <> ")"
+      [ "[!] Error: service-codegen failed (exit code " <> T.pack (show exitCode) <> ")"
       , ""
       , "Output:"
       , stderr

@@ -3,7 +3,7 @@
 ## Overview
 
 synapse-cc is a Haskell orchestrator that turns a live Plexus backend into
-a type-safe client library. It owns three concerns that hub-codegen (the
+a type-safe client library. It owns three concerns that service-codegen (the
 stateless Rust code generator) does not:
 
 - **Cache** — skip rebuilds when nothing changed
@@ -69,7 +69,7 @@ Each branch calls `discoverTools` first, then hands off to the pipeline.
  │  ┌──────────────────────────────────────────────────────────┐   │
  │  │  Step 2 · Code Generation              (31 ms wall)      │   │
  │  │                                                          │   │
- │  │  hub-codegen                                             │   │
+ │  │  service-codegen                                             │   │
  │  │    --target typescript                                   │   │
  │  │    --output-format json          ← stdout, no file I/O   │   │
  │  │    --transport ws|browser                                │   │
@@ -109,7 +109,7 @@ Each branch calls `discoverTools` first, then hands off to the pipeline.
  │  │                                                 modified │   │
  │  │                                                          │   │
  │  │  hash = SHA-256(utf8)[..16 hex chars]                    │   │
- │  │         same algorithm as hub-codegen                    │   │
+ │  │         same algorithm as service-codegen                    │   │
  │  │                                                          │   │
  │  │  then: cleanRemovedFiles (stale files safe to delete)    │   │
  │  └──────────────────────────────────────────────────────────┘   │
@@ -177,7 +177,7 @@ validateCache
       │
       ├─ read code manifest
       │     missing? ──→ CacheMiss
-      │     tool version changed? (+ hub-codegen) ──→ CacheMiss
+      │     tool version changed? (+ service-codegen) ──→ CacheMiss
       │
       └─ validatePluginCaches
              │
@@ -235,7 +235,7 @@ runWatch
                       filter by CLI prefix args (--plugins echo health)
                       for each changed namespace × each active target:
                         rebuildPlugin:
-                          generateCode --plugins <ns> (hub-codegen)
+                          generateCode --plugins <ns> (service-codegen)
                           applyMerge (three-way, no cache update)
                       report: "echo (client) rebuilt in 15ms"
 ```
@@ -262,7 +262,7 @@ runWatch
  │                    subprocess stdin                 │
  │                            ▼                        │
  │                     ┌────────────┐                  │
- │                     │ hub-codegen│  (Rust process)  │
+ │                     │ service-codegen│  (Rust process)  │
  │                     │  reads     │                  │
  │                     │  ir.json   │                  │
  │                     └────────────┘                  │
@@ -274,7 +274,7 @@ runWatch
  └─────────────────────────────────────────────────────┘
 ```
 
-The IR crosses the process boundary **once**: encoded to disk, read by hub-codegen.
+The IR crosses the process boundary **once**: encoded to disk, read by service-codegen.
 All merge and cache decisions happen in the Haskell process only.
 
 ---
@@ -284,7 +284,7 @@ All merge and cache decisions happen in the Haskell process only.
 ```
   Wall time breakdown:
     IR generation (network + JSON parse)   77 ms   62%
-    Code generation (hub-codegen process)  31 ms   25%
+    Code generation (service-codegen process)  31 ms   25%
     Merge + cache + file writes            <5 ms    4%
     Haskell startup + tool discovery       11 ms    9%
                                          ────────
@@ -296,7 +296,7 @@ All merge and cache decisions happen in the Haskell process only.
     Network I/O (WebSocket, DNS)           ~13%
     buildIR (IR assembly)                   ~6%
     applyMerge (file merge)                 ~1%
-    runProcess (hub-codegen launch)         ~5%
+    runProcess (service-codegen launch)         ~5%
     GHC overhead / MAIN                    ~18%
 
   GC: 38 ms (25% of elapsed) — from ~115 MB IR allocation in buildIR
@@ -318,7 +318,7 @@ synapse library exposed raw bytes, this round-trip could be eliminated.
 
 | Invariant | Where enforced |
 |-----------|---------------|
-| Hash algorithm identical in Haskell + Rust | `SHA-256(utf8)[..16 hex]` — `Merge.hs:computeFileHash` matches `hub-codegen/src/hash.rs` |
+| Hash algorithm identical in Haskell + Rust | `SHA-256(utf8)[..16 hex]` — `Merge.hs:computeFileHash` matches `service-codegen/src/hash.rs` |
 | User modifications never overwritten | Three-way merge: disk hash ≠ cached hash → skip |
 | Stale files never blindly deleted | `cleanRemovedFiles`: delete only if disk hash == cached hash |
 | Partial rebuild never removes files | Only full rebuild (plugins removed) triggers cleanup |

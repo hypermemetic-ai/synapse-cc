@@ -25,7 +25,7 @@ This "chronological bubbling" helps prioritize recent architectural decisions.
 
 ## Key Architecture Documents
 
-- **Incremental Caching System** (`docs/architecture/16675916618081268991_incremental-caching-system.md`): Complete architecture for the incremental caching system with three-way merge conflict detection. Covers cache manifests, hash computation, merge strategies, performance metrics, and integration between synapse-cc (Haskell) and hub-codegen (Rust). Production ready with 100% test coverage.
+- **Incremental Caching System** (`docs/architecture/16675916618081268991_incremental-caching-system.md`): Complete architecture for the incremental caching system with three-way merge conflict detection. Covers cache manifests, hash computation, merge strategies, performance metrics, and integration between synapse-cc (Haskell) and service-codegen (Rust). Production ready with 100% test coverage.
 
 ---
 
@@ -45,7 +45,7 @@ synapse-cc/
 │       ├── Config.hs          # synapse.config.json load/init
 │       ├── Dependency.hs      # Plugin dependency resolution
 │       ├── Detect.hs          # Project detection for `init` inference
-│       ├── Discover.hs        # Tool discovery (synapse, hub-codegen)
+│       ├── Discover.hs        # Tool discovery (synapse, service-codegen)
 │       ├── Language.hs        # Per-language install/build/test steps
 │       ├── Lock.hs            # Concurrency lock for cache writes
 │       ├── Logging.hs         # Colored output and logging
@@ -73,7 +73,7 @@ synapse-cc is the **unified compiler toolchain** that orchestrates the complete 
 
 ```
 1. Tool Discovery
-   ↓ Finds synapse and hub-codegen binaries
+   ↓ Finds synapse and service-codegen binaries
 
 2. Resolve Backend
    ↓ By name via the registry (PLEXUS_REGISTRY_URL, default
@@ -85,10 +85,10 @@ synapse-cc is the **unified compiler toolchain** that orchestrates the complete 
    ↓         ~/.cache/plexus-codegen/synapse/ir/<backend>/manifest.json
 
 4. Generate Code
-   ↓ Calls: hub-codegen <ir.json> -o <output> -t <target>
-   ↓ Reads: ~/.cache/plexus-codegen/hub-codegen/<target>/<backend>/manifest.json
+   ↓ Calls: service-codegen <ir.json> -o <output> -t <target>
+   ↓ Reads: ~/.cache/plexus-codegen/service-codegen/<target>/<backend>/manifest.json
    ↓ Three-way merge with conflict detection
-   ↓ Writes: ~/.cache/plexus-codegen/hub-codegen/<target>/<backend>/manifest.json
+   ↓ Writes: ~/.cache/plexus-codegen/service-codegen/<target>/<backend>/manifest.json
 
 5. Install + Compile
    ↓ typescript: bun/npm install + build; rust: cargo build (Z2H-7)
@@ -100,9 +100,9 @@ synapse-cc is the **unified compiler toolchain** that orchestrates the complete 
 
 ### Key Design Decisions
 
-**1. Hybrid: subprocess for hub-codegen, library for synapse**
+**1. Hybrid: subprocess for service-codegen, library for synapse**
 
-`hub-codegen` is a separate Rust binary called as a subprocess — discovered in standard locations, communicated with via CLI arguments and JSON files. Independent development cycles, language flexibility.
+`service-codegen` is a separate Rust binary called as a subprocess — discovered in standard locations, communicated with via CLI arguments and JSON files. Independent development cycles, language flexibility.
 
 `synapse` is consumed as a **Haskell library** (`plexus-synapse` in `build-depends`; `cabal.project` lists `../synapse` as a local package). synapse-cc imports `Synapse.Monad`, `Synapse.IR.Builder`, `Synapse.Log`, `Synapse.Backend.Discovery`, and `Synapse.Self` directly. This lets the two tools share the credentials store (`Synapse.Self`) and `_self` subcommand handlers without reinventing them. See "Credentials store" below.
 
@@ -113,20 +113,20 @@ synapse-cc is the **unified compiler toolchain** that orchestrates the complete 
   - Detects when backend schema changes
   - Avoids redundant IR generation
 
-- **Code Cache** (`~/.cache/plexus-codegen/hub-codegen/`): Managed by hub-codegen
+- **Code Cache** (`~/.cache/plexus-codegen/service-codegen/`): Managed by service-codegen
   - Tracks generated file hashes
   - Detects user modifications via three-way merge
   - Preserves user code by default
 
 **3. Cache Key Consistency**
 
-Critical: synapse-cc and hub-codegen must use the same plugin key.
+Critical: synapse-cc and service-codegen must use the same plugin key.
 
 ```haskell
 -- synapse-cc writes cache with key "default"
 Map.singleton "default" CodePluginCache
 
--- hub-codegen reads cache with key "default"
+-- service-codegen reads cache with key "default"
 manifest.plugins.get("default")  // Must match!
 ```
 
@@ -154,17 +154,17 @@ synapsePaths home =
   ]
 ```
 
-### hub-codegen binary
+### service-codegen binary
 
 ```haskell
-hubCodegenPaths home =
+serviceCodegenPaths home =
   [ -- Relative development builds
-    "../hub-codegen/target/release/hub-codegen"
-  , "../../hub-codegen/target/release/hub-codegen"
+    "../service-codegen/target/release/service-codegen"
+  , "../../service-codegen/target/release/service-codegen"
     -- User installations
-  , home </> ".plexus/bin/hub-codegen"
-  , home </> ".local/bin/hub-codegen"
-  , home </> ".cargo/bin/hub-codegen"
+  , home </> ".plexus/bin/service-codegen"
+  , home </> ".local/bin/service-codegen"
+  , home </> ".cargo/bin/service-codegen"
   ]
 ```
 
@@ -242,9 +242,9 @@ data IRPluginCache = IRPluginCache
 
 ### Code Cache Manifest
 
-**Location**: `~/.cache/plexus-codegen/hub-codegen/<target>/<backend>/manifest.json`
+**Location**: `~/.cache/plexus-codegen/service-codegen/<target>/<backend>/manifest.json`
 
-**Managed by**: hub-codegen (Rust)
+**Managed by**: service-codegen (Rust)
 
 **Purpose**: Tracks generated file hashes for conflict detection
 
@@ -279,7 +279,7 @@ validateIRCache manifest = do
 
 ### When to Regenerate Code?
 
-Handled by hub-codegen via three-way merge. See architecture doc for details.
+Handled by service-codegen via three-way merge. See architecture doc for details.
 
 ---
 
@@ -291,7 +291,7 @@ synapse-cc provides clear error messages for all failure modes:
 data SynapseCCError
   = ToolNotFound !Text ![Text]          -- Tool name + suggestions
   | SynapseFailed !Int !Text            -- Exit code + stderr
-  | HubCodegenFailed !Int !Text         -- Exit code + stderr
+  | ServiceCodegenFailed !Int !Text         -- Exit code + stderr
   | IRCacheCorrupted !Text              -- Error message
   | CodeCacheCorrupted !Text            -- Error message
   | InvalidConfig !Text                 -- Configuration error
@@ -337,7 +337,7 @@ cabal run synapse-cc -- build typescript substrate -o /tmp/client
 
 # Finds:
 #   ../synapse/dist-newstyle/build/.../synapse
-#   ../hub-codegen/target/release/hub-codegen
+#   ../service-codegen/target/release/service-codegen
 ```
 
 ### Debugging
@@ -353,7 +353,7 @@ synapse-cc build typescript substrate -o /tmp/client --debug
 cat ~/.cache/plexus-codegen/synapse/ir/substrate/manifest.json | jq
 
 # View code cache
-cat ~/.cache/plexus-codegen/hub-codegen/typescript/substrate/manifest.json | jq
+cat ~/.cache/plexus-codegen/service-codegen/typescript/substrate/manifest.json | jq
 ```
 
 **Clear caches** (both live under the same root):
@@ -380,15 +380,15 @@ synapse --emit-ir -P 4444 substrate --generator-info synapse-cc:<version>
 
 **Output**: IR JSON file
 
-### hub-codegen (Rust CLI)
+### service-codegen (Rust CLI)
 
-**Repository**: `/workspace/hypermemetic/hub-codegen/`
+**Repository**: `/workspace/hypermemetic/service-codegen/`
 
 **Purpose**: Generates TypeScript/Rust client code from IR
 
 **Called by synapse-cc**:
 ```bash
-hub-codegen /tmp/ir.json -o ./client -t typescript --merge-strategy skip
+service-codegen /tmp/ir.json -o ./client -t typescript --merge-strategy skip
 ```
 
 **Features**:
@@ -429,7 +429,7 @@ synapse-cc build
 
 # 3. Verify output
 cat ~/.cache/plexus-codegen/synapse/ir/mysvc/manifest.json | jq
-cat ~/.cache/plexus-codegen/hub-codegen/typescript/mysvc/manifest.json | jq
+cat ~/.cache/plexus-codegen/service-codegen/typescript/mysvc/manifest.json | jq
 
 # 4. Test cache hit
 synapse-cc build
@@ -475,7 +475,7 @@ synapse-cc build
 See `docs/architecture/16675916618081268991_incremental-caching-system.md` for details:
 
 1. **Interactive Merge Mode**: User prompts for conflict resolution
-2. **Python generator**: the `python` target parses but hub-codegen has no emitter
+2. **Python generator**: the `python` target parses but service-codegen has no emitter
 3. **Remote Cache**: S3/GCS backend for distributed teams
 
 Already shipped (formerly listed here as future): V2 granular hashing
@@ -491,7 +491,7 @@ smoke tests, and watch mode (`synapse-cc watch`).
 **Check search paths**:
 ```bash
 ls ../synapse/dist-newstyle/build/*/ghc-*/plexus-synapse-*/x/synapse/build/synapse/
-ls ../hub-codegen/target/release/
+ls ../service-codegen/target/release/
 ls ~/.plexus/bin/
 ls ~/.local/bin/
 ls ~/.cabal/bin/
@@ -516,11 +516,11 @@ rm -rf ~/.cache/plexus-codegen/
 **Check cache key consistency**:
 ```bash
 # synapse-cc should write "default" key
-cat ~/.cache/plexus-codegen/hub-codegen/typescript/substrate/manifest.json | jq '.plugins | keys'
+cat ~/.cache/plexus-codegen/service-codegen/typescript/substrate/manifest.json | jq '.plugins | keys'
 # Output: ["default"]
 
-# hub-codegen should read "default" key
-# (Check src/SynapseCC/Pipeline.hs line 215 and hub-codegen src/main.rs)
+# service-codegen should read "default" key
+# (Check src/SynapseCC/Pipeline.hs line 215 and service-codegen src/main.rs)
 ```
 
 **If keys don't match**: Update synapse-cc to use "default" consistently
@@ -543,5 +543,5 @@ When adding features:
 
 - **Architecture**: `docs/architecture/16675916618081268991_incremental-caching-system.md`
 - **synapse**: `/workspace/hypermemetic/synapse/`
-- **hub-codegen**: `/workspace/hypermemetic/hub-codegen/`
+- **service-codegen**: `/workspace/hypermemetic/service-codegen/`
 - **Plexus RPC**: `/workspace/hypermemetic/plexus-substrate/`

@@ -9,7 +9,7 @@ unlocks: [UX-9]
 
 The original plan proposed turning build and tests off by default as a workaround for failures. Instead, fix the underlying issues:
 
-- **Build fails** (`tsc --noEmit` missing `@types/node`): fix hub-codegen to emit `@types/node` in generated `package.json`
+- **Build fails** (`tsc --noEmit` missing `@types/node`): fix service-codegen to emit `@types/node` in generated `package.json`
 - **Tests fail** (`health.check` returns `-32601`): fix the smoke test or the backend to handle health checks correctly
 
 If defaults break, fix the thing that's breaking — don't paper over it by disabling the step.

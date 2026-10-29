@@ -9,6 +9,7 @@ module SynapseCC.Lock
   , emptySynapseLock
   ) where
 
+import Control.Applicative ((<|>))
 import Data.Aeson (FromJSON, ToJSON, eitherDecodeFileStrict)
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Encode.Pretty as Pretty
@@ -60,7 +61,7 @@ instance ToJSON LockTarget where
 data SynapseLock = SynapseLock
   { slVersion    :: !Text
   , slSynapseCC  :: !Text
-  , slHubCodegen :: !Text
+  , slServiceCodegen :: !Text
   , slUpdatedAt  :: !Text
   , slTargets    :: !(Map Text LockTarget)  -- ^ outputDir → LockTarget
   } deriving (Show, Eq)
@@ -69,7 +70,7 @@ instance FromJSON SynapseLock where
   parseJSON = Aeson.withObject "SynapseLock" $ \o -> SynapseLock
     <$> o Aeson..: "version"
     <*> o Aeson..: "synapseCC"
-    <*> o Aeson..: "hubCodegen"
+    <*> (o Aeson..: "serviceCodegen" <|> o Aeson..: "hubCodegen") -- naming-alias: a lock written before NAMING-10 reads
     <*> o Aeson..: "updatedAt"
     <*> o Aeson..: "targets"
 
@@ -77,7 +78,7 @@ instance ToJSON SynapseLock where
   toJSON sl = Aeson.object
     [ "version"    Aeson..= slVersion sl
     , "synapseCC"  Aeson..= slSynapseCC sl
-    , "hubCodegen" Aeson..= slHubCodegen sl
+    , "serviceCodegen" Aeson..= slServiceCodegen sl
     , "updatedAt"  Aeson..= slUpdatedAt sl
     , "targets"    Aeson..= slTargets sl
     ]
@@ -87,7 +88,7 @@ emptySynapseLock :: SynapseLock
 emptySynapseLock = SynapseLock
   { slVersion    = "1"
   , slSynapseCC  = synapseCCVersion
-  , slHubCodegen = ""
+  , slServiceCodegen = ""
   , slUpdatedAt  = ""
   , slTargets    = Map.empty
   }
@@ -99,7 +100,7 @@ emptySynapseLock = SynapseLock
 lockPrettyConfig :: Pretty.Config
 lockPrettyConfig = Pretty.defConfig
   { Pretty.confCompare = Pretty.keyOrder
-      [ "version", "synapseCC", "hubCodegen", "updatedAt", "targets"
+      [ "version", "synapseCC", "serviceCodegen", "updatedAt", "targets"
       , "backend", "irHash", "transport", "files", "sharedTransport"
       ]
   }

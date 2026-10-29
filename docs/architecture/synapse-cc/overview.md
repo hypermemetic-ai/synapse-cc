@@ -2,7 +2,7 @@
 
 **Status**: Production
 **Date**: 2026-03-06
-**Components**: synapse-cc (Haskell), hub-codegen (Rust), orcha-maestro (Vue/Tauri)
+**Components**: synapse-cc (Haskell), service-codegen (Rust), orcha-maestro (Vue/Tauri)
 
 ---
 
@@ -10,7 +10,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ hub-codegen (Rust)                                              │
+│ service-codegen (Rust)                                              │
 │ Pure, stateless code generator.                                 │
 │ IR JSON → structured output (files map + file hashes + deps)   │
 │ No file I/O in JSON mode. No toolchain knowledge.              │
@@ -20,7 +20,7 @@
 │ synapse-cc (Haskell)                                            │
 │ Orchestrator. Owns all side effects:                            │
 │  - IR generation (calls synapse binary)                         │
-│  - Code generation (calls hub-codegen)                          │
+│  - Code generation (calls service-codegen)                          │
 │  - Three-way merge and cache                                    │
 │  - Toolchain (bun install, tsc, bun test)                      │
 │  - tsconfig authorship                                          │
@@ -28,7 +28,7 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The split is intentional and strict: **hub-codegen is a dumb generator**. It encodes nothing about which package manager to use, how to run tests, or what the host project looks like. synapse-cc encodes all of that.
+The split is intentional and strict: **service-codegen is a dumb generator**. It encodes nothing about which package manager to use, how to run tests, or what the host project looks like. synapse-cc encodes all of that.
 
 ---
 
@@ -41,7 +41,7 @@ synapse-cc typescript <backend> [options]
     │      synapse generate-ir → ~/.cache/plexus-codegen/synapse/ir/<backend>/ir.json
     │
     ├─ 2. Code generation
-    │      hub-codegen --target typescript --output-format json --transport ws|browser <ir.json>
+    │      service-codegen --target typescript --output-format json --transport ws|browser <ir.json>
     │      → stdout: CodegenOutput { files, fileHashes, dependencies, devDependencies, warnings, version }
     │
     ├─ 3. Three-way merge (Merge.hs)
@@ -53,7 +53,7 @@ synapse-cc typescript <backend> [options]
     │        if cached_hash != current_hash → user-modified → skip (unless --force)
     │
     ├─ 4. tsconfig.json
-    │      Written by synapse-cc (not hub-codegen's version).
+    │      Written by synapse-cc (not service-codegen's version).
     │      include: ["*.ts"] — tsc never sees test/ files.
     │      Browser transport → lib: ["ES2022", "DOM"]
     │      WS transport      → types: ["node"]
@@ -74,7 +74,7 @@ synapse-cc typescript <backend> [options]
 
 ## Transport Modes
 
-Configured via `--transport ws|browser` (synapse-cc) which passes `--transport ws|browser|none` to hub-codegen.
+Configured via `--transport ws|browser` (synapse-cc) which passes `--transport ws|browser|none` to service-codegen.
 
 | Mode | transport.ts emitted | ws import | ws npm dep | Use case |
 |------|---------------------|-----------|------------|----------|
@@ -101,7 +101,7 @@ synapse-cc typescript substrate -P 4444
 synapse-cc typescript substrate -P 4444 -o src/lib/plexus --transport browser
 ```
 - Output dir is a subdirectory of the host project
-- Hub-codegen's tsconfig.json is filtered out; synapse-cc writes none either
+- Service-codegen's tsconfig.json is filtered out; synapse-cc writes none either
 - Dev deps suppressed — host project owns its own toolchain
 - Only runtime deps (e.g. `ws` for ws transport; none for browser) are added to host package.json
 - Scaffolding files (test/ directory) are filtered
@@ -112,10 +112,10 @@ synapse-cc typescript substrate -P 4444 -o src/lib/plexus --transport browser
 
 There are **two separate, non-interoperable caches**:
 
-### hub-codegen cache (`src/cache.rs`)
-- Location: `~/.cache/plexus-codegen/hub-codegen/<target>/<backend>/manifest.json`
+### service-codegen cache (`src/cache.rs`)
+- Location: `~/.cache/plexus-codegen/service-codegen/<target>/<backend>/manifest.json`
 - Active only in `--output-format files` mode (direct CLI use)
-- **Completely bypassed** when synapse-cc calls hub-codegen with `--output-format json`
+- **Completely bypassed** when synapse-cc calls service-codegen with `--output-format json`
 
 ### synapse-cc cache (`src/SynapseCC/Cache.hs`)
 - Two manifests:
@@ -125,7 +125,7 @@ There are **two separate, non-interoperable caches**:
 - Transitive dependency invalidation via `SynapseCC.Dependency`
 - **This is the active cache in the orchestration pipeline**
 
-The synapse-cc code cache manifest stores per-plugin `fileHashes` sourced from `CodegenOutput.fileHashes` (i.e. the hashes hub-codegen computed over the generated content). These hashes drive the three-way merge on subsequent runs.
+The synapse-cc code cache manifest stores per-plugin `fileHashes` sourced from `CodegenOutput.fileHashes` (i.e. the hashes service-codegen computed over the generated content). These hashes drive the three-way merge on subsequent runs.
 
 ---
 
@@ -133,9 +133,9 @@ The synapse-cc code cache manifest stores per-plugin `fileHashes` sourced from `
 
 1. **User edits are never silently overwritten.** Three-way merge detects modification via hash comparison. Only `--force` bypasses this.
 
-2. **hub-codegen is stateless in JSON mode.** No disk reads or writes. Idempotent over identical IR.
+2. **service-codegen is stateless in JSON mode.** No disk reads or writes. Idempotent over identical IR.
 
-3. **tsconfig.json is always synapse-cc's.** Hub-codegen's tsconfig is always filtered from the merge, ensuring `include: ["*.ts"]` (no test/ exposure to tsc).
+3. **tsconfig.json is always synapse-cc's.** Service-codegen's tsconfig is always filtered from the merge, ensuring `include: ["*.ts"]` (no test/ exposure to tsc).
 
 4. **Integration mode does not pollute host devDeps.** `bun-types`, `typescript`, etc. are never injected into a host project's package.json.
 
@@ -147,13 +147,13 @@ The synapse-cc code cache manifest stores per-plugin `fileHashes` sourced from `
 
 | Suite | Count | What it covers |
 |-------|-------|----------------|
-| hub-codegen (`cargo test`) | 38 | Transport dispatch correctness, three-way merge logic, cache hit/miss, generated code shape |
+| service-codegen (`cargo test`) | 38 | Transport dispatch correctness, three-way merge logic, cache hit/miss, generated code shape |
 | synapse-cc (`cabal test`) | 69 | Full pipeline integration against live substrate: CLI parsing, IR gen, code gen, merge invariants, tsconfig, package.json, toolchain, performance |
 | orcha-maestro (`bun test`) | 16 | Generated browser-transport client against live substrate: health, echo, registry (streaming), cone, concurrency |
 
 ### Known gaps
 
-- `--output-format files` path in hub-codegen has no unit tests
+- `--output-format files` path in service-codegen has no unit tests
 - `--transport none` (monorepo mode) has no synapse-cc integration test
 - synapse-cc integration mode (Tauri) has no automated test; only manually verified via orcha-maestro
 - synapse-cc `Cache.hs` V2 transitive invalidation has no direct tests

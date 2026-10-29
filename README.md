@@ -8,8 +8,8 @@
 
 - 🔧 **Unified Interface**: Single command to generate clients from any backend
 - 🔍 **Smart Tool Discovery**: Finds local development builds or installed versions
-- ⚡ **Fast**: Incremental caching skips regeneration when schemas haven't changed (IR cache at `~/.cache/plexus-codegen/synapse/ir/`, per-file code cache via hub-codegen)
-- 🎯 **Multi-Language**: TypeScript and Rust today (`rust` requires a hub-codegen built with `--features rust`); `python` parses but has no generator yet
+- ⚡ **Fast**: Incremental caching skips regeneration when schemas haven't changed (IR cache at `~/.cache/plexus-codegen/synapse/ir/`, per-file code cache via service-codegen)
+- 🎯 **Multi-Language**: TypeScript and Rust today (`rust` requires a service-codegen built with `--features rust`); `python` parses but has no generator yet
 - 🛠️ **Complete Pipeline**: schema → IR → generated code → installed deps → compiled artifact → smoke tests
 - 🔐 **Credential lifecycle**: Per-backend defaults store shared with `synapse` — set, inspect, and rotate JWTs / cookies / headers via `synapse-cc _self <backend> …`. Values held as reference URIs (`literal:`, `env://`, `file://`, `keychain://`) so secrets live in the OS keychain or env vars, not plaintext. JWT decoding flags expired tokens at a glance.
 
@@ -27,15 +27,26 @@ cabal install
 
 `synapse-cc` requires these tools to be available:
 - **synapse** - Schema discovery and IR generation
-- **hub-codegen** ≥ 0.5.0 - Code generation from IR. Earlier releases write a
+- **service-codegen** ≥ 0.5.0 - Code generation from IR. Earlier releases write a
   parameter the server injects (`pdSource`: auth, header, derived, …) into the
   generated methods as an optional `unknown` argument; synapse-cc says so when
   it finds one (SYNAPSE-CC-2)
 
 The tool will automatically find them if they're:
 - In your `$PATH`
-- In local development directories (`../synapse`, `../hub-codegen`)
+- In local development directories (`../synapse`, `../service-codegen`)
 - In `~/.plexus/bin/`
+
+**The generator is `service-codegen`** (0.5.1 on; NAMING-10 — a Plexus backend
+is a *service*). synapse-cc 0.3.6 looks for it under that name first — on
+`$PATH`, then `../service-codegen/target/…`, `~/.plexus/bin`, `~/.cargo/bin` —
+and only then under its old name, saying the old name is deprecated. Its path
+is `--service-codegen PATH` (the old flag still works for one release, hidden,
+with a note). `synapse.lock` is written with `serviceCodegen`, the generator's
+JSON is read as `serviceCodegenVersion`, a code cache's toolchain as
+`tvServiceCodegen`; each old key is still read. NAMING-18 removes the old
+names; `scripts/naming-gate.sh` (the `naming` test suite) fails on a new one.
+synapse-cc 0.3.6 builds against `plexus-synapse` 3.14.3 up to 3.17.
 
 ## Usage
 
@@ -140,7 +151,7 @@ artifact compiles or the command fails.
   --force                 Force regeneration (ignore cache)
   --debug                 Enable debug logging
   --synapse PATH          synapse binary path (overrides discovery)
-  --hub-codegen PATH      hub-codegen binary path (overrides discovery)
+  --service-codegen PATH      service-codegen binary path (overrides discovery)
   -t, --token JWT         JWT auth token (see Credentials below)
   --token-file PATH       Read JWT from file
   -H, --host HOST         Registry/discovery host (default: 127.0.0.1)
@@ -149,16 +160,16 @@ artifact compiles or the command fails.
 
 ### Rust target prerequisite
 
-`build rust` requires a hub-codegen binary compiled with the `rust` feature
-(`cargo build --release --features all` in the hub-codegen repo). A
+`build rust` requires a service-codegen binary compiled with the `rust` feature
+(`cargo build --release --features all` in the service-codegen repo). A
 typescript-only binary fails with:
 
 ```
-[!] Error: hub-codegen failed (exit code 1)
+[!] Error: service-codegen failed (exit code 1)
 Error: Rust codegen not enabled. Rebuild with --features rust
 ```
 
-Point `--hub-codegen` at a rust-enabled build if the discovered one is not.
+Point `--service-codegen` at a rust-enabled build if the discovered one is not.
 
 ### Credentials & Headers
 
@@ -192,7 +203,7 @@ synapse-cc (Haskell)
     ↓
     ├─→ synapse (Haskell) → IR (JSON)
     ↓
-    ├─→ hub-codegen (Rust) → Generated Code
+    ├─→ service-codegen (Rust) → Generated Code
     ↓
     └─→ Language Tools (npm, tsc, etc.) → Compiled Artifact
 ```
@@ -212,7 +223,7 @@ synapse-cc/
         ├── CLI.hs             # Subcommand + option parsing
         ├── Config.hs          # synapse.config.json load/init
         ├── Detect.hs          # Project detection for `init` inference
-        ├── Discover.hs        # Tool discovery (synapse, hub-codegen)
+        ├── Discover.hs        # Tool discovery (synapse, service-codegen)
         ├── RegistryResolve.hs # Backend-name resolution via the registry
         ├── Pipeline.hs        # Pipeline orchestration
         ├── Process.hs         # Subprocess helpers
@@ -257,7 +268,7 @@ merge, dependency installation + compile + smoke-test steps (bun/npm for
 TypeScript, cargo for Rust), watch mode, `wait`, registry-based backend
 resolution (`PLEXUS_REGISTRY_URL`), shared credentials store (`_self`).
 
-Not shipped: a `python` generator (the target parses; hub-codegen has no
+Not shipped: a `python` generator (the target parses; service-codegen has no
 emitter), remote/distributed caching.
 
 ## Contributing

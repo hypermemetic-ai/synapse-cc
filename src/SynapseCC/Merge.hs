@@ -27,7 +27,7 @@ import System.Directory ( createDirectoryIfMissing, doesFileExist
 import System.FilePath ((</>), takeDirectory)
 
 -- | Compute SHA-256 hash of text content, returning first 16 hex characters.
--- Algorithm matches hub-codegen hash.rs: SHA-256(utf8_bytes)[..16] as lowercase hex.
+-- Algorithm matches service-codegen hash.rs: SHA-256(utf8_bytes)[..16] as lowercase hex.
 computeFileHash :: Text -> Text
 computeFileHash content =
   T.take 16 $ TE.decodeUtf8 $ Base16.encode $ SHA256.hash $ TE.encodeUtf8 content

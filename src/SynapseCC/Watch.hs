@@ -280,7 +280,7 @@ handleHashChange watchArgs synapseConfig tools debug _newHash = do
                   Left err -> logInfo $ "  [!] " <> ns <> " (" <> targetName <> "): " <> err
                   Right () -> logSuccess $ ns <> " (" <> targetName <> ") rebuilt in " <> T.pack (show ms) <> "ms"
 
--- | Rebuild a single plugin namespace for a single target using hub-codegen.
+-- | Rebuild a single plugin namespace for a single target using service-codegen.
 rebuildPlugin
   :: WatchArgs
   -> SynapseConfig

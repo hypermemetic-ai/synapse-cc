@@ -36,6 +36,6 @@ Keep it simple — just glob `dist-newstyle/build/*/ghc-*/<pkg>-*/x/<exe>/build/
 ## Acceptance Criteria
 
 - `synapse` found from `../synapse/dist-newstyle/` on macOS (aarch64-osx)
-- `hub-codegen` found from `../hub-codegen/target/{release,debug}/` (already works)
+- `service-codegen` found from `../service-codegen/target/{release,debug}/` (already works)
 - No hardcoded architecture or GHC version strings
 - PATH fallback still works as before
