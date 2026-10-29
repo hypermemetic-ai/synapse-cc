@@ -1,7 +1,7 @@
 # Client Surface, Auth, Core Extraction, and Output — Epic Decomposition
 
 **Date:** 2026-05-02
-**Audience:** Future sessions planning work on the Plexus stack downstream of plexus-core/plexus-transport/plexus-macros — specifically synapse-cc, hub-codegen, plexus-gamma, and any work on Plexus-native auth or output ergonomics.
+**Audience:** Future sessions planning work on the Plexus stack downstream of plexus-core/plexus-transport/plexus-macros — specifically synapse-cc, service-codegen, plexus-gamma, and any work on Plexus-native auth or output ergonomics.
 **Purpose:** Capture the design conversation that produced four parallel epics (CLIENTS, AUTHZ, CORE, OUTPUT) and the rationale behind what was scoped in vs. dropped. This is a snapshot of the architectural reasoning so future sessions can pick up without re-deriving the framings from scratch.
 
 ---
@@ -11,7 +11,7 @@
 A May 2026 audit of the Plexus stack found:
 
 - The synapse CLI binary is roughly **scope-complete** for what a CLI should do
-- The hub-codegen Rust target is at **~60% feature parity** with TypeScript
+- The service-codegen Rust target is at **~60% feature parity** with TypeScript
 - plexus-gamma is **architecturally close** to "API browser" but missing chrome (auth UI, persistence, bidir UI, sequenced-call handling)
 - plexus-substrate **doesn't yet exercise** most of the new plexus-core/transport features (cookie auth, `PlexusRequest` extraction, `SessionValidator`, Origin enforcement) — so the runtime contracts aren't load-bearing in production yet
 - Authentication beyond bearer-token is the **largest missing pillar** for shipping Plexus microservices to the public internet
@@ -21,9 +21,9 @@ The conversation produced four epics, structured to ship value tactically while 
 
 | Epic | Scope | Status |
 |---|---|---|
-| **CLIENTS** | hub-codegen Rust parity + gamma chrome (persistence, bidir UI) + Origin model spike | 7 tickets in `plans/CLIENTS/` |
+| **CLIENTS** | service-codegen Rust parity + gamma chrome (persistence, bidir UI) + Origin model spike | 7 tickets in `plans/CLIENTS/` |
 | **AUTHZ** | Plexus-native auth + default-deny scoping + privacy primitives | 1 unified spike in `plans/AUTHZ/` |
-| **CORE** | Extract Rust IR-builder crate; share types across hub-codegen + gamma (WASM) + future synapse | 1 epic + 2 spikes in `plans/CORE/` |
+| **CORE** | Extract Rust IR-builder crate; share types across service-codegen + gamma (WASM) + future synapse | 1 epic + 2 spikes in `plans/CORE/` |
 | **OUTPUT** | Agent-friendly synapse CLI flags (--select, --filter, --table, etc.) | 3 tickets in `synapse/plans/OUTPUT/` |
 
 This document explains why those four epics, why those scopes, and what we explicitly chose not to do.
@@ -34,13 +34,13 @@ This document explains why those four epics, why those scopes, and what we expli
 
 The plexus stack at this point comprises:
 
-- **plexus-core** — Rust crate; `DynamicHub`, `AuthContext`, `PlexusRequest`, `Handle`, error types
+- **plexus-core** — Rust crate; `DynamicService`, `AuthContext`, `PlexusRequest`, `Handle`, error types
 - **plexus-transport** — Rust crate; WebSocket, MCP HTTP, REST gateway, cookie-only WS auth, `SessionValidator`, `ValidOrigin`/`SecureTransport`/`ClientIp` extractors
 - **plexus-macros** — Rust proc-macros; `#[activation]`, `#[method]`, `#[derive(PlexusRequest)]`, `#[derive(HandleEnum)]`
 - **plexus-substrate** — Rust reference backend; ~17 activations; bearer-token auth only; no cookie auth, no Origin enforcement, no rate limiting, no multi-tenancy
 - **synapse** — Haskell CLI; fetches schemas via `_info`, navigates with cycle detection, emits IR, renders via Mustache or NDJSON
-- **synapse-cc** — Haskell orchestrator; consumes synapse as a library; coordinates synapse + hub-codegen for end-to-end client codegen
-- **hub-codegen** — Rust codegen tool; consumes synapse-emitted IR; produces TypeScript and Rust clients
+- **synapse-cc** — Haskell orchestrator; consumes synapse as a library; coordinates synapse + service-codegen for end-to-end client codegen
+- **service-codegen** — Rust codegen tool; consumes synapse-emitted IR; produces TypeScript and Rust clients
 - **plexus-gamma** — Vue 3 + Bun runtime UI; live-schema invoker; uses synapse-cc-generated `--transport browser` for its own client
 
 Recent additions (since 2026-01-15) that drove the audit:
@@ -62,9 +62,9 @@ The audit asked: **what's drifted between layers, what's missing in the chrome, 
 
 ### Parity gaps (the original question)
 
-For each plexus-core / plexus-transport / plexus-macros feature added since 2026-01-15, traced whether synapse's IR captures it and whether hub-codegen consumes it:
+For each plexus-core / plexus-transport / plexus-macros feature added since 2026-01-15, traced whether synapse's IR captures it and whether service-codegen consumes it:
 
-| Macro / runtime feature | plexus-core exposes | synapse IR captures | hub-codegen emits |
+| Macro / runtime feature | plexus-core exposes | synapse IR captures | service-codegen emits |
 |---|---|---|---|
 | `#[activation(request = MyRequest)]` typed extractors | ✅ `PluginSchema.request` | ❌ dropped | ❌ no extractor client |
 | `#[derive(PlexusRequest)]` w/ `#[from_cookie/header/query/peer/auth_context]` + `x-plexus-source` | ✅ | ❌ | ❌ |
@@ -79,13 +79,13 @@ For each plexus-core / plexus-transport / plexus-macros feature added since 2026
 | MCP flat-schema routing | ✅ | ❌ | ❌ |
 | `SessionValidator` integration | ✅ | n/a | n/a |
 
-In addition, three IR fields synapse already emits are **silently dropped at hub-codegen's deserializer**:
+In addition, three IR fields synapse already emits are **silently dropped at service-codegen's deserializer**:
 
 - `mdBidirResponseType` — bidir response TypeRef (commit `f8506678`)
 - `mdBidirResponseSchema` — full JSON Schema for bidir responses
 - `irPluginHashes` — V2 plugin cache info
 
-Verified at `hub-codegen/src/ir.rs:308` (MethodDef) and `hub-codegen/src/ir.rs:33` (IR root). serde silently ignores unknown JSON keys.
+Verified at `service-codegen/src/ir.rs:308` (MethodDef) and `service-codegen/src/ir.rs:33` (IR root). serde silently ignores unknown JSON keys.
 
 ### Substrate's actual state (the load-bearing question)
 
@@ -103,11 +103,11 @@ A targeted audit of plexus-substrate (May 2026) — see `plexus-substrate/docs/a
 
 ### Rust target status
 
-hub-codegen Rust target is at **~60% TypeScript parity** ("fill in the gaps," not "rewrite"). Foundation works: types, async client, transport, streaming, multi-plugin namespacing, Cargo.toml emission. Notable gaps:
+service-codegen Rust target is at **~60% TypeScript parity** ("fill in the gaps," not "rewrite"). Foundation works: types, async client, transport, streaming, multi-plugin namespacing, Cargo.toml emission. Notable gaps:
 
 - Bidir handlers entirely missing (`md_bidir_type` parsed, never emitted)
 - No typed RPC error class hierarchy (TS has `PlexusRpcError`/`AuthenticationError`/`InvalidParamsError`/`MethodNotFoundError`/`ExecutionError`; Rust has flat `PlexusError`)
-- IR-9 typed handles are skeleton-only (`DynamicChild` impls return `serde_json::Value` instead of typed clients; `hub-codegen/src/generator/rust/client.rs:474`)
+- IR-9 typed handles are skeleton-only (`DynamicChild` impls return `serde_json::Value` instead of typed clients; `service-codegen/src/generator/rust/client.rs:474`)
 - IR-7 deprecation untested in Rust integration tests
 - rustdoc parity vs JSDoc untested
 
@@ -173,7 +173,7 @@ The corrected framing:
 The user steered the conversation to a critical point: shipping microservices to the public internet requires more than "AuthContext threading" (which the existing AUTH-1..8 epic delivers). It requires:
 
 - **Identity** — login flows, multi-mechanism auth per backend, SSO/OIDC
-- **Authorization** — default-deny scoping, roles, hub-level policies, framework-enforced
+- **Authorization** — default-deny scoping, roles, service-level policies, framework-enforced
 - **Privacy** — schema projection, sensitive-field tagging, audit logging, no enumeration via errors
 - **Discoverability** — capability advertisement so clients can drive the right flow
 - **Credential isolation** — per-Origin scoping in clients
@@ -200,7 +200,7 @@ This insight is folded into AUTHZ-S01's follow-up implementation tickets (the sp
 
 ### 6. Drift prevention by construction
 
-CLIENTS-2 fixes the current drift (three missing fields in hub-codegen's IR mirror). CORE-5 (downstream of the CORE epic) eliminates the drift class **structurally**: hub-codegen imports the canonical IR types from a shared `plexus-ir-builder` Rust crate, so adding a synapse-side field automatically appears in hub-codegen.
+CLIENTS-2 fixes the current drift (three missing fields in service-codegen's IR mirror). CORE-5 (downstream of the CORE epic) eliminates the drift class **structurally**: service-codegen imports the canonical IR types from a shared `plexus-ir-builder` Rust crate, so adding a synapse-side field automatically appears in service-codegen.
 
 CORE additionally lets gamma replace its third independent representation (`plexus-schema.ts`) with the same canonical types via WASM. Three places that all need to agree → one place.
 
@@ -225,7 +225,7 @@ Four parallel epics, plus two existing ones.
 **Tickets:**
 
 - **CLIENTS-1** epic overview
-- **CLIENTS-2** hub-codegen IR exposes bidir response type/schema (deserializer drift fix; unblocks CLIENTS-4)
+- **CLIENTS-2** service-codegen IR exposes bidir response type/schema (deserializer drift fix; unblocks CLIENTS-4)
 - **CLIENTS-3** Rust target typed RPC error classes (parity with TS `PlexusRpcError` family)
 - **CLIENTS-4** Rust target bidir handlers (blocked_by CLIENTS-2)
 - **CLIENTS-5** gamma persists Origin state to localStorage
@@ -248,7 +248,7 @@ Four parallel epics, plus two existing ones.
 
 ### CORE (`plans/CORE/`)
 
-**Goal:** Extract a Rust IR-builder core; share types across hub-codegen + future synapse + gamma (via WASM). Eliminate the drift class by construction.
+**Goal:** Extract a Rust IR-builder core; share types across service-codegen + future synapse + gamma (via WASM). Eliminate the drift class by construction.
 
 **Tickets:**
 
@@ -258,7 +258,7 @@ Four parallel epics, plus two existing ones.
 - **CORE-2** (after spikes) implement `plexus-ir-builder` crate
 - **CORE-3** WASM build pipeline + npm package
 - **CORE-4** gamma adopts WASM core, deletes `plexus-schema.ts`
-- **CORE-5** hub-codegen consumes shared IR types; deletes `src/ir.rs` mirror
+- **CORE-5** service-codegen consumes shared IR types; deletes `src/ir.rs` mirror
 
 **Why deferred from immediate execution:** months-not-weeks initiative. Doesn't gate anything tactical. Long-term architectural payoff: the next drift class is prevented by construction.
 
@@ -294,8 +294,8 @@ Items discussed and chosen NOT to ticket, with reasons. This list matters — fu
 | **plexus-ir Rust AST crate consumption** | Used only by plexus-derive; out of scope by extension. |
 | **`#[method(http_method = "GET\|POST\|...")]` dispatch in IR/codegen** | "That implementation is a little half baked. We should be considering a more complete protocol adapter protocol rather than the current bolted on one." Deferred pending protocol-adapter redesign. |
 | **REST gateway client codegen (verb-dispatch)** | Same protocol-adapter blocker. Transport itself remains in scope; how methods bind to verbs is the half-baked part. |
-| **`HandleEnum` codegen support** | Only test-fixture usage in workspace today; raw `Handle` struct already round-trips through hub-codegen → TS clients. Re-evaluate when first production caller appears outside substrate. |
-| **`irPluginHashes` deserializer addition in hub-codegen** | synapse-cc consumes synapse as a Haskell library and reads V2 cache info directly; hub-codegen has no current use for plugin-level hashes. |
+| **`HandleEnum` codegen support** | Only test-fixture usage in workspace today; raw `Handle` struct already round-trips through service-codegen → TS clients. Re-evaluate when first production caller appears outside substrate. |
+| **`irPluginHashes` deserializer addition in service-codegen** | synapse-cc consumes synapse as a Haskell library and reads V2 cache info directly; service-codegen has no current use for plugin-level hashes. |
 | **IR-9 typed-child wiring (`DynamicChild` returning typed clients)** | Skeleton exists; needs design spike to determine the typed-child shape before tickets. |
 | **IR-7 deprecation integration test for Rust target** | Quality-of-life; not blocking parity. |
 | **rustdoc parity test against TS JSDoc test** | Quality-of-life. |
@@ -328,7 +328,7 @@ These are deliberately not yet decided. The four spike tickets are designed to r
 - Capability advertisement schema and where it's served
 - Standard `auth.*` activation contract (or `plexus-auth` crate proposal)
 - Default-deny posture decision + substrate migration story
-- Scope/role declaration syntax (macro form + runtime registration form + hub-level composition)
+- Scope/role declaration syntax (macro form + runtime registration form + service-level composition)
 - Schema projection algorithm
 - `#[sensitive]` redaction rule
 - Audit log primitive
@@ -340,7 +340,7 @@ These are deliberately not yet decided. The four spike tickets are designed to r
 - Module-by-module classification of synapse's source tree (Core / CLI / Boundary)
 - Proposed Rust crate API surface
 - Reuse map (which plexus-core / plexus-transport types are imported vs reimplemented)
-- Migration sketch for hub-codegen and gamma
+- Migration sketch for service-codegen and gamma
 
 ### CORE-S02 will pin
 

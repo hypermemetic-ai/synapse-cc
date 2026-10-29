@@ -14,7 +14,7 @@ This umbrella was written Apr 22 2026 when the plan was to defer REQ-6, REQ-7, a
 
 - **REQ-6** (plexus-macros) — the macro-side work of emitting per-method `x-plexus-source` annotations. Rewritten with full scope including `required = [...]` field locking.
 - **REQ-8** (synapse renderer) — new ticket: per-method auth and source display in `synapse <bk> <plugin>` output.
-- **REQ-9** (hub-codegen) — new ticket: JSDoc emission retargeted from activation-level (tonight's minimal) to per-method. Supersedes REQ-7's JSDoc acceptance criteria.
+- **REQ-9** (service-codegen) — new ticket: JSDoc emission retargeted from activation-level (tonight's minimal) to per-method. Supersedes REQ-7's JSDoc acceptance criteria.
 - **SAFE-6** (synapse-cc) — rewritten with corrected detection logic (any method has `from: auth`, not cookie field in psRequest).
 
 ## Status

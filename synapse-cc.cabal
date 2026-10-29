@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               synapse-cc
-version:            0.3.5
+version:            0.3.6
 synopsis:           Unified compiler toolchain for Plexus backends
 description:
   synapse-cc orchestrates the complete pipeline from backend schema
@@ -57,7 +57,7 @@ library
                     , unordered-containers >= 0.2
                     , fsnotify >= 0.4
                     , plexus-protocol
-                    , plexus-synapse >= 3.14.3 && < 3.15
+                    , plexus-synapse >= 3.14.3 && < 3.18
                     , katip >= 0.8 && < 0.9
     autogen-modules:  Paths_synapse_cc
     other-modules:    Paths_synapse_cc
@@ -78,7 +78,7 @@ executable synapse-cc
     build-depends:    base >= 4.14 && < 5
                     , synapse-cc
                     , text
-                    , plexus-synapse >= 3.14.3 && < 3.15
+                    , plexus-synapse >= 3.14.3 && < 3.18
     hs-source-dirs:   app
     default-language: Haskell2010
     ghc-options:      -threaded -rtsopts -with-rtsopts=-N
@@ -104,7 +104,7 @@ test-suite synapse-cc-test
                     , containers >= 0.6
                     , optparse-applicative >= 0.18
                     , plexus-protocol
-                    , plexus-synapse >= 3.14.3 && < 3.15
+                    , plexus-synapse >= 3.14.3 && < 3.18
                     , stm >= 2.5
     default-extensions: OverloadedStrings
                       , LambdaCase
@@ -124,4 +124,25 @@ test-suite safe6-authcheck
                     , temporary >= 1.3
                     , text >= 1.2
     default-extensions: OverloadedStrings, QuasiQuotes
+    ghc-options:      -threaded
+
+-- NAMING-10: the naming gate and the old names read but never written.
+-- Hermetic (no backend), unlike synapse-cc-test.
+test-suite naming
+    default-language: Haskell2010
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          NamingSpec.hs
+    build-depends:    base >= 4.14 && < 5
+                    , synapse-cc
+                    , hspec >= 2.0
+                    , aeson >= 2.0
+                    , bytestring >= 0.11
+                    , directory >= 1.3
+                    , filepath >= 1.4
+                    , optparse-applicative >= 0.18
+                    , process >= 1.6
+                    , temporary >= 1.3
+                    , text >= 1.2
+    default-extensions: OverloadedStrings
     ghc-options:      -threaded

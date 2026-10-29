@@ -21,7 +21,7 @@ synapse-cc (Haskell)
     ↓
     ├─→ synapse (Haskell) → IR (JSON)
     ↓
-    ├─→ hub-codegen (Rust) → Generated Code
+    ├─→ service-codegen (Rust) → Generated Code
     ↓
     └─→ Language Tools (npm, tsc, etc.) → Compiled Artifact
 ```
@@ -64,7 +64,7 @@ Options:
    - Fail with helpful error
 4. ✅ Pipeline orchestration:
    - Run synapse to generate IR
-   - Run hub-codegen on IR
+   - Run service-codegen on IR
    - Write output to directory
 5. ✅ Basic error handling and logging
 6. ✅ End-to-end test with substrate
@@ -119,7 +119,7 @@ Options:
 3. Parallel generation for multiple targets
 4. Progress indicators and spinners
 5. Colorized output
-6. Auto-install missing tools (synapse, hub-codegen)
+6. Auto-install missing tools (synapse, service-codegen)
 
 **Deliverable**: Production-ready developer tool
 
@@ -136,7 +136,7 @@ synapse-cc/
     └── SynapseCC/
         ├── Types.hs             # Core types (Config, Target, Backend, etc.)
         ├── CLI.hs               # Command-line argument parsing
-        ├── Discover.hs          # Tool discovery (find synapse, hub-codegen)
+        ├── Discover.hs          # Tool discovery (find synapse, service-codegen)
         ├── Pipeline.hs          # Pipeline orchestration
         ├── Process.hs           # Subprocess execution helpers
         ├── Cache.hs             # IR/code caching by hash
@@ -148,7 +148,7 @@ synapse-cc/
 
 ### 1. Subprocess Execution (Not FFI)
 
-**Decision**: Call synapse and hub-codegen as separate processes
+**Decision**: Call synapse and service-codegen as separate processes
 
 **Rationale**:
 - Clean separation of concerns
@@ -160,7 +160,7 @@ synapse-cc/
 **Implementation**:
 ```haskell
 runSynapse :: Backend -> URL -> FilePath -> IO (Either Error IRPath)
-runHubCodegen :: IRPath -> Target -> Options -> FilePath -> IO (Either Error GeneratedPath)
+runServiceCodegen :: IRPath -> Target -> Options -> FilePath -> IO (Either Error GeneratedPath)
 ```
 
 ### 2. Tool Discovery Strategy
@@ -168,12 +168,12 @@ runHubCodegen :: IRPath -> Target -> Options -> FilePath -> IO (Either Error Gen
 **Priority Order**:
 1. Local development paths (for contributors)
    - `../synapse/dist-newstyle/build/.../synapse`
-   - `../hub-codegen/target/release/hub-codegen`
+   - `../service-codegen/target/release/service-codegen`
 2. System PATH (for installed versions)
-   - `synapse` and `hub-codegen` in $PATH
+   - `synapse` and `service-codegen` in $PATH
 3. Plexus bin directory (for managed installs)
    - `~/.plexus/bin/synapse`
-   - `~/.plexus/bin/hub-codegen`
+   - `~/.plexus/bin/service-codegen`
 4. Fail with helpful installation instructions
 
 **Future**: Auto-install via cabal/cargo
@@ -251,7 +251,7 @@ synapse-cc typescript substrate ws://localhost:4444
 # Output:
 # 🔍 Discovering tools...
 # ✓ Found synapse at ../synapse/dist-newstyle/.../synapse
-# ✓ Found hub-codegen at ../hub-codegen/target/release/hub-codegen
+# ✓ Found service-codegen at ../service-codegen/target/release/service-codegen
 #
 # 📡 Connecting to substrate at ws://localhost:4444...
 # ✓ Connected
@@ -309,7 +309,7 @@ synapse-cc typescript substrate ws://localhost:4444 --watch
 
 ### External Tools (Runtime)
 - `synapse` - Schema discovery and IR generation
-- `hub-codegen` - Code generation from IR
+- `service-codegen` - Code generation from IR
 - Language tools (npm, tsc, cargo, pip, etc.) - Language-specific builds
 
 ## Future Extensions

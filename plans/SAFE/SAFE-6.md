@@ -38,7 +38,7 @@ The correct signal for "this backend requires cookie auth" is: **any method in t
 ## Context
 
 - REQ-6 (plexus-macros) emits `x-plexus-source` per method param, including `from: "auth"` for `#[from_auth]` params.
-- SAFE-7 (hub-codegen) generates a cookie-capable TS transport with the `SAFE-7-cookie-auth-marker` comment.
+- SAFE-7 (service-codegen) generates a cookie-capable TS transport with the `SAFE-7-cookie-auth-marker` comment.
 - synapse-cc orchestrates codegen but currently doesn't compare the two.
 
 ## Required behavior
@@ -49,7 +49,7 @@ The correct signal for "this backend requires cookie auth" is: **any method in t
 | Backend IR has ≥1 auth method AND target's `transport.ts` contains the marker | No warning |
 | Backend IR has zero auth methods | No warning regardless of target transport.ts contents |
 | First build (target dir has no prior `transport.ts`) | No warning — nothing to mismatch |
-| Target configured with a custom (non-hub-codegen) transport | Inspection finds neither marker nor URL-token construction; skip warning to avoid false positives |
+| Target configured with a custom (non-service-codegen) transport | Inspection finds neither marker nor URL-token construction; skip warning to avoid false positives |
 
 Detection algorithm:
 
@@ -73,7 +73,7 @@ Detection algorithm:
 
 2. **First build has no prior client to inspect.** Skip the warning; not actionable until a client exists. Subsequent builds catch the mismatch.
 
-3. **False negatives from non-hub-codegen transports.** A user with a hand-rolled transport that happens to be cookie-capable but lacks the marker gets a false-positive warning. Mitigation: the warning wording should say "target's transport doesn't look like a SAFE-7-era hub-codegen output" rather than "your transport is broken."
+3. **False negatives from non-service-codegen transports.** A user with a hand-rolled transport that happens to be cookie-capable but lacks the marker gets a false-positive warning. Mitigation: the warning wording should say "target's transport doesn't look like a SAFE-7-era service-codegen output" rather than "your transport is broken."
 
 ## Acceptance criteria
 
@@ -82,7 +82,7 @@ Detection algorithm:
 3. Build against a backend with no auth methods: no warning in stderr regardless of target transport.ts contents.
 4. First build (no prior target/transport.ts present): no warning in stderr.
 5. Build with `--force`: warning behavior unchanged from non-force builds.
-6. Against uscis (after REQ-6 lands): the warning fires on first build with a stale URL-token client, is silent after regenerating with the current SAFE-7 hub-codegen.
+6. Against uscis (after REQ-6 lands): the warning fires on first build with a stale URL-token client, is silent after regenerating with the current SAFE-7 service-codegen.
 
 ## Coordination
 

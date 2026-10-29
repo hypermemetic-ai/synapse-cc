@@ -3,6 +3,7 @@ module Main where
 import Control.Monad (when, forM_)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import System.Environment (getArgs)
 import System.Exit (ExitCode(..), exitFailure, exitSuccess, exitWith)
 import System.IO (stdout, stderr, hSetEncoding, hSetBuffering, utf8, BufferMode(..))
 
@@ -31,6 +32,7 @@ main = do
   hSetBuffering stdout LineBuffering
   hSetBuffering stderr LineBuffering
 
+  getArgs >>= mapM_ logInfo . deprecatedFlagNotes
   cmd <- parseCommand
 
   case cmd of

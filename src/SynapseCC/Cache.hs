@@ -51,7 +51,7 @@ import qualified SynapseCC.Dependency as Dep
 -- │       ├── manifest.json # IR cache manifest
 -- │       ├── cone.json     # Generated IR fragments
 -- │       └── arbor.json
--- └── hub-codegen/
+-- └── service-codegen/
 --     └── typescript/       # Level 3: Code cache
 --         ├── manifest.json # Code cache manifest
 --         ├── cone/         # Generated code per plugin
@@ -124,7 +124,7 @@ validateCache config tools = do
       target = cfgTarget config
       debug = optDebug opts
       synapseVer    = toolSynapseVersion tools
-      hubCodegenVer = toolHubCodegenVersion tools
+      serviceCodegenVer = toolServiceCodegenVersion tools
 
   -- If --force flag is set, skip cache entirely
   if optForce opts
@@ -161,7 +161,7 @@ validateCache config tools = do
                   let codeToolchain = ccmToolchain codeManifest
                   if tvSynapseCC codeToolchain /= synapseCCVersion ||
                      tvSynapse codeToolchain /= synapseVer ||
-                     isJust (tvHubCodegen codeToolchain) && tvHubCodegen codeToolchain /= Just hubCodegenVer
+                     isJust (tvServiceCodegen codeToolchain) && tvServiceCodegen codeToolchain /= Just serviceCodegenVer
                     then do
                       logDebug debug "Tool versions changed, invalidating code cache"
                       pure $ CacheMiss ToolVersionChanged
@@ -338,7 +338,7 @@ writeIRCacheManifest opts backend plugins synapseVer = do
         , ircmToolchain = ToolchainVersions
             { tvSynapseCC = synapseCCVersion
             , tvSynapse = synapseVer
-            , tvHubCodegen = Nothing
+            , tvServiceCodegen = Nothing
             , tvPlexusCore = Nothing  -- SAFE-4 degraded mode: backend doesn't expose version yet (SAFE-S02)
             }
         , ircmUpdatedAt = timestamp
@@ -350,7 +350,7 @@ writeIRCacheManifest opts backend plugins synapseVer = do
 
 -- | Write code cache manifest
 writeCodeCacheManifest :: Options -> Backend -> Target -> Map Text CodePluginCache -> Text -> Text -> IO ()
-writeCodeCacheManifest opts backend target plugins synapseVer hubCodegenVer = do
+writeCodeCacheManifest opts backend target plugins synapseVer serviceCodegenVer = do
   cacheDir <- getCodeCacheDir opts backend target
   createDirectoryIfMissing True cacheDir
 
@@ -363,7 +363,7 @@ writeCodeCacheManifest opts backend target plugins synapseVer hubCodegenVer = do
         , ccmToolchain = ToolchainVersions
             { tvSynapseCC = synapseCCVersion
             , tvSynapse = synapseVer
-            , tvHubCodegen = Just hubCodegenVer
+            , tvServiceCodegen = Just serviceCodegenVer
             , tvPlexusCore = Nothing  -- SAFE-4 degraded mode (SAFE-S02)
             }
         , ccmUpdatedAt = timestamp

@@ -12,7 +12,7 @@ severity: Low
 
 plexus-core 0.5.2 does not surface its own toolchain version through any RPC introspection endpoint. SAFE-S01 confirmed this: `_info` returns only the backend name; `PluginSchema` carries the plugin's version but not the plexus-core toolchain version.
 
-Without this, downstream tooling (synapse, synapse-cc, hub-codegen) cannot detect plexus-core major bumps and cannot invalidate stale IR or refuse incompatible builds.
+Without this, downstream tooling (synapse, synapse-cc, service-codegen) cannot detect plexus-core major bumps and cannot invalidate stale IR or refuse incompatible builds.
 
 ## Required behavior
 

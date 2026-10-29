@@ -7,14 +7,14 @@
 
 ## Executive Summary
 
-Today synapse-cc treats hub-codegen as a black box: one subprocess call, one IR, one global flag
+Today synapse-cc treats service-codegen as a black box: one subprocess call, one IR, one global flag
 set, all files out. This conflates two distinct concerns — *what to generate* and *how to configure
 it* — and makes any per-artifact variation impossible. More fundamentally, it forces a single
 "mode" decision (standalone vs. host-integrated) that should not be a global switch at all.
 
 **Tendrils** is a proposed evolution with two interlocking parts:
 
-**1. Precise generation.** synapse-cc invokes hub-codegen as a set of targeted, composable steps.
+**1. Precise generation.** synapse-cc invokes service-codegen as a set of targeted, composable steps.
 Each tendril specifies which artifacts to generate, which transport to use, which plugins to
 include, and where to write the output. synapse-cc owns the composition.
 
@@ -36,7 +36,7 @@ the smoke test a fixed, isolated execution path that does not touch the host's `
 
 ```
 synapse-cc typescript substrate --transport browser
-    └─ hub-codegen --target typescript --output-format json --transport browser ir.json
+    └─ service-codegen --target typescript --output-format json --transport browser ir.json
            └─ CodegenOutput { files: { transport.ts, rpc.ts, echo/client.ts, ... } }
 ```
 
@@ -59,10 +59,10 @@ Problems with this:
 
 ```
 synapse-cc typescript substrate --transport browser
-    ├─ tendril: transport  → hub-codegen ... --generate transport --transport browser  → outputDir/
-    ├─ tendril: rpc        → hub-codegen ... --generate rpc                            → outputDir/
-    ├─ tendril: plugins    → hub-codegen ... --generate plugins                        → outputDir/
-    └─ tendril: smoke      → hub-codegen ... --generate smoke --transport ws           → .synapse/smoke/
+    ├─ tendril: transport  → service-codegen ... --generate transport --transport browser  → outputDir/
+    ├─ tendril: rpc        → service-codegen ... --generate rpc                            → outputDir/
+    ├─ tendril: plugins    → service-codegen ... --generate plugins                        → outputDir/
+    └─ tendril: smoke      → service-codegen ... --generate smoke --transport ws           → .synapse/smoke/
 ```
 
 Each tendril is an independent, targeted call with its own options and output directory.
@@ -124,11 +124,11 @@ means host-integrated.
 
 ---
 
-## Proposed hub-codegen Changes
+## Proposed service-codegen Changes
 
 ### `--generate <artifact>` selector
 
-A new flag that restricts what hub-codegen produces:
+A new flag that restricts what service-codegen produces:
 
 ```
 --generate all         (current behaviour, default)
@@ -151,9 +151,9 @@ contains only the requested subset.
 Restricts plugin-client generation to named plugins. Useful for incremental runs when only
 some plugins changed.
 
-### Hub-codegen stays stateless
+### Service-codegen stays stateless
 
-These flags add no state. hub-codegen still takes an IR, applies generation options, and
+These flags add no state. service-codegen still takes an IR, applies generation options, and
 returns a `CodegenOutput` subset. No new disk I/O. Idempotent.
 
 ---
@@ -185,7 +185,7 @@ data GenerateSelector
 runTendril :: Config -> ToolLocations -> IRPath -> Tendril -> IO (Either SynapseCCError CodegenOutput)
 ```
 
-Builds the hub-codegen argument list for this tendril and calls `runProcess`. Returns a
+Builds the service-codegen argument list for this tendril and calls `runProcess`. Returns a
 partial `CodegenOutput` covering only the requested files.
 
 ### `mergeTendrils`
@@ -365,7 +365,7 @@ before running. This is the only dep injection into `devDependencies` in host-in
 
 ## Implementation Plan
 
-### Phase 1: hub-codegen `--generate` flag
+### Phase 1: service-codegen `--generate` flag
 
 1. Add `GenerateSelector` enum to `GenerationOptions`
 2. In `typescript/mod.rs`: gate each artifact behind the selector
@@ -407,7 +407,7 @@ before running. This is the only dep injection into `devDependencies` in host-in
 ## What Stays the Same
 
 - Three-way merge, cache, and tsconfig steps are unchanged
-- hub-codegen remains stateless; each tendril call is independent and idempotent
+- service-codegen remains stateless; each tendril call is independent and idempotent
 - The `--transport` flag still works as before
 - The existing `CodegenOutput` JSON schema is backward-compatible
 
@@ -426,5 +426,5 @@ before running. This is the only dep injection into `devDependencies` in host-in
 | Incremental per-plugin regen | Not possible | `GenPlugins + --plugins` filter |
 | Complexity | Low | Moderate |
 
-The subprocess overhead for N tendrils is negligible (hub-codegen runs in ~30ms per call).
+The subprocess overhead for N tendrils is negligible (service-codegen runs in ~30ms per call).
 If IR grows large, tendrils could be batched via stdin streaming — not needed now.

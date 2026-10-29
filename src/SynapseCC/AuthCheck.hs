@@ -11,9 +11,9 @@
 -- at dispatch time; clients without cookie support will fail silently.
 --
 -- The SAFE-7 marker is the string @SAFE-7-cookie-auth-marker@ embedded
--- in the transport template by @hub-codegen@'s TS generator. Its
+-- in the transport template by @service-codegen@'s TS generator. Its
 -- presence in an existing @transport.ts@ indicates the file was
--- produced by a SAFE-7-era hub-codegen (i.e. cookie-capable).
+-- produced by a SAFE-7-era service-codegen (i.e. cookie-capable).
 module SynapseCC.AuthCheck
   ( detectCookieAuthMismatch
   , backendRequiresCookieAuth
@@ -30,7 +30,7 @@ import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 
 -- | The marker string embedded by SAFE-7 in @transport.ts@. Kept in
--- sync with @hub-codegen/src/generator/typescript/transport.rs@.
+-- sync with @service-codegen/src/generator/typescript/transport.rs@.
 safe7Marker :: Text
 safe7Marker = "SAFE-7-cookie-auth-marker"
 
@@ -92,7 +92,7 @@ inspectTarget outputDir = do
         then pure Nothing
         else pure . Just $
           "[!] SAFE-6: backend requires cookie auth but target's transport.ts "
-          <> "does not look like a SAFE-7-era hub-codegen output (missing marker '"
+          <> "does not look like a SAFE-7-era service-codegen output (missing marker '"
           <> safe7Marker
           <> "'). Cookie-based WS upgrade may not work. "
-          <> "Regenerate with an up-to-date hub-codegen or pass --force."
+          <> "Regenerate with an up-to-date service-codegen or pass --force."

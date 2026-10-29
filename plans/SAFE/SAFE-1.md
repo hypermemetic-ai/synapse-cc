@@ -45,7 +45,7 @@ SAFE-7 first (codegen change), then SAFE-6 (warning). Generated TS clients use c
 | SAFE-4 | synapse-cc version-gates IR against plexus-core | Pending |
 | SAFE-5 | synapse decodes semantic JSON-RPC error codes | Pending |
 | SAFE-6 | synapse-cc warns on cookie auth mismatch | Pending |
-| SAFE-7 | hub-codegen TS client uses cookies on WS upgrade | Pending |
+| SAFE-7 | service-codegen TS client uses cookies on WS upgrade | Pending |
 
 ## Out of scope
 
@@ -53,6 +53,6 @@ SAFE-7 first (codegen change), then SAFE-6 (warning). Generated TS clients use c
 - Multi-language codegen targets (Python, Go)
 - Hosted cache (S3/GCS — listed in synapse-cc CLAUDE.md "Future Work")
 - Hardware-signer / Keychain auth integration (env-var resolution via shell composition is sufficient — see `--token "$(security find-generic-password ...)"` pattern)
-- Bidir Rust parity in hub-codegen (separate small ticket; not blocking 0.4)
+- Bidir Rust parity in service-codegen (separate small ticket; not blocking 0.4)
 - REST/MCP transport client emission (waits for protocol adapter design; informational JSDoc only is in REQ-7)
 - Request-extractor JSDoc surfacing (covered by REQ-7, depends on REQ-5/REQ-6 + SAFE-7)

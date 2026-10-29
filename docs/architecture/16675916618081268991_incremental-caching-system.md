@@ -2,7 +2,7 @@
 
 **Status**: Production Ready
 **Date**: 2026-02-11
-**Components**: synapse-cc (Haskell), hub-codegen (Rust)
+**Components**: synapse-cc (Haskell), service-codegen (Rust)
 
 ---
 
@@ -58,19 +58,19 @@ Performance:
 ┌──────────────────────────────────────────────────────────────┐
 │                    synapse-cc (Haskell)                       │
 │                                                               │
-│  • Discovers synapse and hub-codegen binaries                │
+│  • Discovers synapse and service-codegen binaries                │
 │  • Connects to Plexus RPC backend                            │
 │  • Calls synapse to generate IR                              │
 │  • Manages IR cache manifest (~/.cache/synapse/ir/)          │
-│  • Calls hub-codegen with generated IR                       │
+│  • Calls service-codegen with generated IR                       │
 │                                                               │
 └────────────────────┬─────────────────────────────────────────┘
                      │
                      ↓ IR JSON
 ┌──────────────────────────────────────────────────────────────┐
-│                    hub-codegen (Rust)                         │
+│                    service-codegen (Rust)                         │
 │                                                               │
-│  • Reads cache manifest (~/.cache/hub-codegen/)              │
+│  • Reads cache manifest (~/.cache/service-codegen/)              │
 │  • Generates new code                                        │
 │  • Computes SHA-256 hashes for all files                     │
 │  • Three-way merge: cached vs current vs new                 │
@@ -90,24 +90,24 @@ Performance:
 2. synapse-cc writes IR cache manifest
    → ~/.cache/synapse/ir/<backend>/manifest.json
 
-3. synapse-cc calls hub-codegen
+3. synapse-cc calls service-codegen
    → Passes IR JSON and output directory
 
-4. hub-codegen reads code cache manifest
-   → ~/.cache/hub-codegen/<target>/<backend>/manifest.json
+4. service-codegen reads code cache manifest
+   → ~/.cache/service-codegen/<target>/<backend>/manifest.json
 
-5. hub-codegen generates code
+5. service-codegen generates code
    → Computes SHA-256 hash for each file
 
-6. hub-codegen performs three-way merge
+6. service-codegen performs three-way merge
    → For each file: compare cached hash, current hash, new hash
    → Determine: Unchanged | SafeToUpdate | UserModified | NewFile
 
-7. hub-codegen applies merge strategy
+7. service-codegen applies merge strategy
    → Skip: Preserve user-modified files, show warning
    → Force: Overwrite everything including user modifications
 
-8. hub-codegen writes updated cache manifest
+8. service-codegen writes updated cache manifest
    → Stores new file hashes for next run
 ```
 
@@ -167,7 +167,7 @@ File exists in cache?
 
 ### Implementation
 
-**Location**: `/workspace/hypermemetic/hub-codegen/src/merge.rs`
+**Location**: `/workspace/hypermemetic/service-codegen/src/merge.rs`
 
 ```rust
 fn determine_file_status(
@@ -231,15 +231,15 @@ data IRPluginCache = IRPluginCache
 data ToolchainVersions = ToolchainVersions
   { tvSynapseCC :: !Text   -- "0.1.0.0"
   , tvSynapse   :: !Text   -- "0.2.0.0"
-  , tvHubCodegen :: !Text  -- "0.1.0"
+  , tvServiceCodegen :: !Text  -- "0.1.0"
   }
 ```
 
 ### Code Cache Manifest (Rust)
 
-**Location**: `~/.cache/plexus-codegen/hub-codegen/<target>/<backend>/manifest.json`
+**Location**: `~/.cache/plexus-codegen/service-codegen/<target>/<backend>/manifest.json`
 
-**Written by**: hub-codegen
+**Written by**: service-codegen
 
 **Purpose**: Track generated file hashes for conflict detection
 
@@ -267,7 +267,7 @@ pub struct CodePluginCache {
   "toolchain": {
     "synapse_cc": "0.1.0.0",
     "synapse": "0.2.0.0",
-    "hub_codegen": "0.1.0"
+    "service_codegen": "0.1.0"
   },
   "updated_at": "2026-02-11T15:47:00Z",
   "plugins": {
@@ -293,7 +293,7 @@ pub struct CodePluginCache {
 
 **Algorithm**: SHA-256, truncated to 16 hex characters (matching Plexus)
 
-**Location**: `/workspace/hypermemetic/hub-codegen/src/hash.rs`
+**Location**: `/workspace/hypermemetic/service-codegen/src/hash.rs`
 
 ```rust
 use sha2::{Sha256, Digest};
@@ -337,7 +337,7 @@ pub fn compute_file_hash(file_content: &str) -> String {
 **Behavior**: Preserve user-modified files, show warnings
 
 ```bash
-hub-codegen cone-ir.json -o ./client
+service-codegen cone-ir.json -o ./client
 
 # Output:
 Merge Summary:
@@ -361,7 +361,7 @@ Total: 88 files
 **Behavior**: Overwrite everything, including user modifications
 
 ```bash
-hub-codegen cone-ir.json -o ./client --merge-strategy force
+service-codegen cone-ir.json -o ./client --merge-strategy force
 
 # Output:
 Merge Summary:
@@ -379,7 +379,7 @@ Total: 88 files
 **Behavior**: Prompt user for each conflict
 
 ```bash
-hub-codegen cone-ir.json -o ./client --merge-strategy interactive
+service-codegen cone-ir.json -o ./client --merge-strategy interactive
 
 # Would prompt:
 File 'cone/types.ts' has been modified:
@@ -399,7 +399,7 @@ Choice: _
 
 ### Bug #1: Cache Key Mismatch
 
-**Problem**: synapse-cc wrote cache with key "all" but hub-codegen read "default"
+**Problem**: synapse-cc wrote cache with key "all" but service-codegen read "default"
 
 ```haskell
 -- BEFORE (synapse-cc line 215)
@@ -488,36 +488,36 @@ User code: Preserved ✅
 
 ## Integration Points
 
-### synapse-cc → hub-codegen
+### synapse-cc → service-codegen
 
 **File**: `/workspace/hypermemetic/synapse-cc/src/SynapseCC/Pipeline.hs`
 
 ```haskell
--- Call hub-codegen with IR
+-- Call service-codegen with IR
 generateCode :: Config -> ToolLocations -> IRPath -> IO (Either SynapseCCError CompiledPath)
 generateCode config tools irPath = do
-  let codegenPath = toolPathToFilePath (toolHubCodegen tools)
+  let codegenPath = toolPathToFilePath (toolServiceCodegen tools)
       outputDir = optOutput (cfgOptions config)
       target = show (cfgTarget config)
 
-  -- Build hub-codegen command
+  -- Build service-codegen command
   let args =
         [ unIRPath irPath       -- IR JSON path
         , "-o", outputDir       -- Output directory
         , "-t", target          -- Target language
         ]
 
-  -- Run hub-codegen (handles caching internally)
+  -- Run service-codegen (handles caching internally)
   result <- runProcess codegenPath args Nothing debug
 
   case prExitCode result of
     ExitSuccess -> pure $ Right $ CompiledPath outputDir
-    ExitFailure code -> pure $ Left $ HubCodegenFailed code (prStderr result)
+    ExitFailure code -> pure $ Left $ ServiceCodegenFailed code (prStderr result)
 ```
 
 **Cache manifest management**:
 - synapse-cc writes `~/.cache/synapse/ir/<backend>/manifest.json`
-- hub-codegen reads/writes `~/.cache/hub-codegen/<target>/<backend>/manifest.json`
+- service-codegen reads/writes `~/.cache/service-codegen/<target>/<backend>/manifest.json`
 - Separate cache namespaces prevent conflicts
 
 ### Cache Directory Structure
@@ -530,13 +530,13 @@ generateCode config tools irPath = do
 │           └── manifest.json          # IR cache (synapse-cc)
 │
 └── plexus-codegen/
-    └── hub-codegen/
+    └── service-codegen/
         ├── typescript/
         │   └── substrate/
-        │       └── manifest.json      # Code cache (hub-codegen)
+        │       └── manifest.json      # Code cache (service-codegen)
         └── rust/
             └── substrate/
-                └── manifest.json      # Code cache (hub-codegen)
+                └── manifest.json      # Code cache (service-codegen)
 ```
 
 ---
@@ -692,8 +692,8 @@ synapse-cc typescript substrate -o ./client --merge-strategy force
 - Handle user choices (keep/overwrite/diff/all)
 
 **Files to modify**:
-- `/workspace/hypermemetic/hub-codegen/src/merge.rs`
-- `/workspace/hypermemetic/hub-codegen/src/main.rs`
+- `/workspace/hypermemetic/service-codegen/src/merge.rs`
+- `/workspace/hypermemetic/service-codegen/src/main.rs`
 
 ### 3. Production Deployment (Recommended)
 
@@ -728,7 +728,7 @@ synapse-cc typescript substrate -o ./client --merge-strategy force
 - `src/SynapseCC/Cache.hs` - IR cache management
 - `src/SynapseCC/Types.hs` - Cache manifest types
 
-**Rust (hub-codegen)**:
+**Rust (service-codegen)**:
 - `src/merge.rs` - Three-way merge logic (254 lines)
 - `src/cache.rs` - Code cache manifest management
 - `src/hash.rs` - SHA-256 hash computation

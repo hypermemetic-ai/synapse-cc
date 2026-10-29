@@ -28,7 +28,7 @@ Add one-liner step announcements for each pipeline phase in normal (non-debug) m
 
 ### Implementation
 
-In `Pipeline.hs`, add `logStep` / `logSuccess` calls at each stage boundary. Parse summary info from tool stdout where possible (hub-codegen already prints merge summary).
+In `Pipeline.hs`, add `logStep` / `logSuccess` calls at each stage boundary. Parse summary info from tool stdout where possible (service-codegen already prints merge summary).
 
 ## Acceptance Criteria
 
