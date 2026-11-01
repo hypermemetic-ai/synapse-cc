@@ -1,4 +1,1 @@
 packages: .
-          ../plexus-protocol
-          ../synapse
-          ../synapse/synapse-types
