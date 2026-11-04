@@ -1,3 +1,4 @@
+repo_name = "synapse-cc"
 org = "hypermemetic-ai"
 forges = ["github"]
 visibility = "public"
