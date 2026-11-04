@@ -40,6 +40,7 @@ import System.FilePath ((</>))
 import Plexus.Client (SubstrateConfig(..), defaultConfig)
 import qualified Plexus.Transport as Transport
 import Plexus.Types (PlexusStreamItem(..))
+import Plexus.RemoteError (renderRemoteError)
 import Synapse.Monad (initEnv, runSynapseM)
 import Synapse.IR.Builder (buildIR)
 import qualified Synapse.Log as Log
@@ -182,7 +183,7 @@ extractHashValue (StreamData _ _ ct dat)
             _ -> Nothing
         _ -> Nothing
   | otherwise = Nothing
-extractHashValue (StreamError _ _ err _) = Just (Left err)
+extractHashValue (StreamError _ _ err _) = Just (Left (renderRemoteError err))
 extractHashValue _                        = Nothing
 
 -- ============================================================================

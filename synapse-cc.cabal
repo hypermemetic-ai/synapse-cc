@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               synapse-cc
-version:            0.3.6
+version:            0.4.0
 synopsis:           Unified compiler toolchain for Plexus backends
 description:
   synapse-cc orchestrates the complete pipeline from backend schema
@@ -10,7 +10,15 @@ author:             Hypermemetic
 maintainer:         dev@hypermemetic.com
 category:           Development
 build-type:         Simple
-extra-doc-files:    PLAN.md, README.md
+extra-doc-files:    PLAN.md, README.md, CHANGELOG.md
+
+flag live-tests
+  description: Build synapse-cc-test, which needs a substrate backend
+               registered at 127.0.0.1:4444. Opt-in, so a default
+               `cabal test` needs nothing running.
+               Enable with: cabal test -f live-tests
+  default:     False
+  manual:      True
 
 common warnings
     ghc-options: -Wall
@@ -56,8 +64,8 @@ library
                     , transformers >= 0.6
                     , unordered-containers >= 0.2
                     , fsnotify >= 0.4
-                    , plexus-protocol
-                    , plexus-synapse >= 3.14.3 && < 3.18
+                    , plexus-protocol >= 0.6 && < 0.7
+                    , plexus-synapse >= 4.0 && < 5
                     , katip >= 0.8 && < 0.9
     autogen-modules:  Paths_synapse_cc
     other-modules:    Paths_synapse_cc
@@ -78,7 +86,7 @@ executable synapse-cc
     build-depends:    base >= 4.14 && < 5
                     , synapse-cc
                     , text
-                    , plexus-synapse >= 3.14.3 && < 3.18
+                    , plexus-synapse >= 4.0 && < 5
     hs-source-dirs:   app
     default-language: Haskell2010
     ghc-options:      -threaded -rtsopts -with-rtsopts=-N
@@ -103,12 +111,14 @@ test-suite synapse-cc-test
                     , bytestring >= 0.11
                     , containers >= 0.6
                     , optparse-applicative >= 0.18
-                    , plexus-protocol
-                    , plexus-synapse >= 3.14.3 && < 3.18
+                    , plexus-protocol >= 0.6 && < 0.7
+                    , plexus-synapse >= 4.0 && < 5
                     , stm >= 2.5
     default-extensions: OverloadedStrings
                       , LambdaCase
                       , ScopedTypeVariables
+    if !flag(live-tests)
+        buildable: False
 
 test-suite safe6-authcheck
     default-language: Haskell2010
