@@ -10,7 +10,7 @@ author:             Hypermemetic
 maintainer:         dev@hypermemetic.com
 category:           Development
 build-type:         Simple
-extra-doc-files:    PLAN.md, README.md, CHANGELOG.md
+extra-doc-files:    README.md, CHANGELOG.md
 
 flag live-tests
   description: Build synapse-cc-test, which needs a substrate backend
